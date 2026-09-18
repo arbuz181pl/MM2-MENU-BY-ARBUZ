@@ -1,5 +1,5 @@
 --//==================================================
---// MM2 MENU BY ARBUZ v0.1alpha (UPDATED)
+--// MM2 MENU BY ARBUZ v0.9BETA
 --//==================================================
 --// LocalScript
 --// StarterPlayer > StarterPlayerScripts
@@ -165,7 +165,7 @@ title.Name = "Title"
 title.Size = UDim2.new(1, -82, 1, 0)
 title.Position = UDim2.fromOffset(10, 0)
 title.BackgroundTransparency = 1
-title.Text = "MM2 MENU BY ARBUZ v0.1alpha"
+title.Text = "MM2 MENU BY ARBUZ v0.9BETA"
 title.TextColor3 = Color3.fromRGB(245, 245, 250)
 title.TextSize = 12
 title.Font = Enum.Font.GothamBold
