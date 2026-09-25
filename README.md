@@ -4,3 +4,4 @@ MM2 Script Menu compatible with Delta Executor by ARBUZ181PL
 Made: 17/09/2026 
 Updated: 17/09/2026 
 Version: v0.9BETA
+LOADSTRING loadstring(game:HttpGet("https://raw.githubusercontent.com/.../MM2MENU.lua?t=" .. tick()))()
