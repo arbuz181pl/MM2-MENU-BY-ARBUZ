@@ -6,7 +6,7 @@ MM2 Script Menu compatible with Delta Executor by ARBUZ181PL
 
 Made: 17/09/2026 
 
-Updated: 17/09/2026 
+Updated: 25/09/2026 
 
 Version: v0.9BETA
 
