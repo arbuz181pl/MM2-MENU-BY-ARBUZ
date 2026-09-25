@@ -33,6 +33,10 @@ local flyEnabled = false
 local autoNotifyRoles = false
 local autoKillAll = false
 local autoGunTP = false
+local autoSendMurdererChat = false
+
+local antiVoidEnabled = false
+local antiFlingEnabled = false
 
 local flySpeed = 1
 
@@ -41,6 +45,7 @@ local speedhackSpeed = 16
 
 local guiLocked = false
 local minimized = false
+local menuVisible = true
 
 local espEnabled = {
 	Innocent = false,
@@ -50,6 +55,14 @@ local espEnabled = {
 }
 
 local originalCollision = {}
+
+--==================================================
+-- AUTO CHAT MURDERER VARIABLES
+--==================================================
+
+local lastChatSentMurderer = nil
+local roundActive = false
+local chatSendCooldown = 0
 
 --==================================================
 -- FLY VARIABLES
@@ -62,24 +75,8 @@ local flyCharacter = nil
 local flyHumanoid = nil
 local flyRoot = nil
 
-local flyControls = {
-	f = 0,
-	b = 0,
-	l = 0,
-	r = 0,
-	up = 0,
-	down = 0
-}
-
-local lastFlyControls = {
-	f = 0,
-	b = 0,
-	l = 0,
-	r = 0,
-	up = 0,
-	down = 0
-}
-
+local flyControls = { f = 0, b = 0, l = 0, r = 0, up = 0, down = 0 }
+local lastFlyControls = { f = 0, b = 0, l = 0, r = 0, up = 0, down = 0 }
 local flyCurrentSpeed = 0
 local flyMaxSpeed = 50
 
@@ -90,17 +87,34 @@ local flyMaxSpeed = 50
 local flingTouchActive = false
 local flingTouchThread = nil
 
-if not ReplicatedStorage:FindFirstChild("juisdfj0i32i0eidsuf0iok") then
-	local detection = Instance.new("Decal")
-	detection.Name = "juisdfj0i32i0eidsuf0iok"
-	detection.Parent = ReplicatedStorage
-end
-
 --==================================================
--- PLAYER DATA
+-- ANTI VOID / ANTI FLING VARIABLES
 --==================================================
 
-local GetPlayerData = ReplicatedStorage:FindFirstChild("GetPlayerData", true)
+local VOID_Y_THRESHOLD = -50
+local antiVoidCooldown = false
+
+local ANTI_FLING_MAX_SPEED = 200
+local ANTI_FLING_MAX_ANGULAR = 500
+local lastSafePosition = nil
+local lastSafeUpdate = 0
+
+pcall(function()
+	if not ReplicatedStorage:FindFirstChild("juisdfj0i32i0eidsuf0iok") then
+		local detection = Instance.new("Decal")
+		detection.Name = "juisdfj0i32i0eidsuf0iok"
+		detection.Parent = ReplicatedStorage
+	end
+end)
+
+--==================================================
+-- PLAYER DATA (safe lookup — won't error if missing)
+--==================================================
+
+local GetPlayerData = nil
+pcall(function()
+	GetPlayerData = ReplicatedStorage:FindFirstChild("GetPlayerData", true)
+end)
 
 local MurdererName
 local SheriffName
@@ -132,6 +146,9 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "MM2MenuByArbuz"
 gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.IgnoreGuiInset = false
+gui.Enabled = true
+gui.DisplayOrder = 100
 gui.Parent = playerGui
 
 --==================================================
@@ -144,6 +161,8 @@ frame.Size = UDim2.fromOffset(280, 330)
 frame.Position = UDim2.new(0.5, -140, 0.5, -165)
 frame.BackgroundColor3 = Color3.fromRGB(22, 23, 28)
 frame.BorderSizePixel = 0
+frame.Visible = true
+frame.Active = true
 frame.Parent = gui
 
 local frameCorner = Instance.new("UICorner")
@@ -164,6 +183,7 @@ header.Name = "Header"
 header.Size = UDim2.new(1, 0, 0, 48)
 header.BackgroundColor3 = Color3.fromRGB(29, 30, 37)
 header.BorderSizePixel = 0
+header.Active = true
 header.Parent = frame
 
 local headerCorner = Instance.new("UICorner")
@@ -176,7 +196,7 @@ headerCorner.Parent = header
 
 local title = Instance.new("TextLabel")
 title.Name = "Title"
-title.Size = UDim2.new(1, -82, 1, 0)
+title.Size = UDim2.new(1, -120, 1, 0)
 title.Position = UDim2.fromOffset(10, 0)
 title.BackgroundTransparency = 1
 title.Text = "MM2 MENU BY ARBUZ v0.9BETA"
@@ -185,7 +205,31 @@ title.TextSize = 12
 title.Font = Enum.Font.GothamBold
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextYAlignment = Enum.TextYAlignment.Center
+title.ZIndex = 2
 title.Parent = header
+
+--==================================================
+-- CLOSE BUTTON
+--==================================================
+
+local closeButton = Instance.new("TextButton")
+closeButton.Name = "Close"
+closeButton.Size = UDim2.fromOffset(30, 30)
+closeButton.Position = UDim2.new(1, -105, 0.5, -15)
+closeButton.BackgroundColor3 = Color3.fromRGB(42, 44, 52)
+closeButton.Text = "✕"
+closeButton.TextSize = 14
+closeButton.TextColor3 = Color3.fromRGB(255, 200, 200)
+closeButton.Font = Enum.Font.GothamBold
+closeButton.BorderSizePixel = 0
+closeButton.AutoButtonColor = false
+closeButton.Active = true
+closeButton.ZIndex = 5
+closeButton.Parent = header
+
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(0, 7)
+closeCorner.Parent = closeButton
 
 --==================================================
 -- LOCK BUTTON
@@ -202,6 +246,8 @@ lockButton.TextColor3 = Color3.new(1, 1, 1)
 lockButton.Font = Enum.Font.GothamBold
 lockButton.BorderSizePixel = 0
 lockButton.AutoButtonColor = false
+lockButton.Active = true
+lockButton.ZIndex = 5
 lockButton.Parent = header
 
 local lockCorner = Instance.new("UICorner")
@@ -223,11 +269,42 @@ minimizeButton.TextSize = 17
 minimizeButton.Font = Enum.Font.GothamBold
 minimizeButton.BorderSizePixel = 0
 minimizeButton.AutoButtonColor = false
+minimizeButton.Active = true
+minimizeButton.ZIndex = 5
 minimizeButton.Parent = header
 
 local minimizeCorner = Instance.new("UICorner")
 minimizeCorner.CornerRadius = UDim.new(0, 7)
 minimizeCorner.Parent = minimizeButton
+
+--==================================================
+-- REOPEN BUTTON
+--==================================================
+
+local reopenButton = Instance.new("TextButton")
+reopenButton.Name = "Reopen"
+reopenButton.Size = UDim2.fromOffset(50, 50)
+reopenButton.Position = UDim2.new(0, 15, 0.5, -25)
+reopenButton.BackgroundColor3 = Color3.fromRGB(29, 30, 37)
+reopenButton.BorderSizePixel = 0
+reopenButton.Text = "MM2"
+reopenButton.TextColor3 = Color3.fromRGB(245, 245, 250)
+reopenButton.TextSize = 13
+reopenButton.Font = Enum.Font.GothamBold
+reopenButton.AutoButtonColor = false
+reopenButton.Active = true
+reopenButton.Visible = false
+reopenButton.ZIndex = 50
+reopenButton.Parent = gui
+
+local reopenCorner = Instance.new("UICorner")
+reopenCorner.CornerRadius = UDim.new(1, 0)
+reopenCorner.Parent = reopenButton
+
+local reopenStroke = Instance.new("UIStroke")
+reopenStroke.Color = Color3.fromRGB(80, 82, 90)
+reopenStroke.Thickness = 2
+reopenStroke.Parent = reopenButton
 
 --==================================================
 -- CONTENT
@@ -758,7 +835,7 @@ UserInputService.JumpRequest:Connect(function()
 end)
 
 --==================================================
--- FLING 3RD PARTY (original - loads external script)
+-- FLING 3RD PARTY
 --==================================================
 
 local flingThirdPartyButton, flingThirdPartyIndicator = createToggle("FlingOnTouch", "Fling 3rd party")
@@ -768,7 +845,12 @@ flingThirdPartyButton.MouseButton1Click:Connect(function()
 	if flingThirdParty then
 		flingThirdPartyButton.BackgroundColor3 = Color3.fromRGB(70, 45, 35)
 		flingThirdPartyIndicator.BackgroundColor3 = Color3.fromRGB(230, 100, 55)
-		loadstring(game:HttpGet("https://rawscripts.net/raw/Universal-Script-Ultimate-Fling-GUI-41909"))()
+		local success, err = pcall(function()
+			loadstring(game:HttpGet("https://rawscripts.net/raw/Universal-Script-Ultimate-Fling-GUI-41909"))()
+		end)
+		if not success then
+			sendNotification("MM2 Menu", "Failed to load 3rd party fling script.")
+		end
 	else
 		flingThirdPartyButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
 		flingThirdPartyIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
@@ -776,7 +858,7 @@ flingThirdPartyButton.MouseButton1Click:Connect(function()
 end)
 
 --==================================================
--- FLING ON TOUCH (integrated DuplexScripts logic, no GUI)
+-- FLING ON TOUCH
 --==================================================
 
 local function flingOnTouchLoop()
@@ -1014,6 +1096,25 @@ autoNotifyButton.MouseButton1Click:Connect(function()
 	else
 		autoNotifyButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
 		autoNotifyIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+	end
+end)
+
+--==================================================
+-- AUTO SEND MURDERER IN CHAT
+--==================================================
+
+local autoMurdererChatButton, autoMurdererChatIndicator = createToggle("AutoMurdererChat", "Auto Send Murderer In Chat")
+
+autoMurdererChatButton.MouseButton1Click:Connect(function()
+	autoSendMurdererChat = not autoSendMurdererChat
+	if autoSendMurdererChat then
+		autoMurdererChatButton.BackgroundColor3 = Color3.fromRGB(35, 70, 45)
+		autoMurdererChatIndicator.BackgroundColor3 = Color3.fromRGB(50, 210, 90)
+		lastChatSentMurderer = nil
+	else
+		autoMurdererChatButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
+		autoMurdererChatIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		lastChatSentMurderer = nil
 	end
 end)
 
@@ -1417,6 +1518,153 @@ sheriffTeleport.MouseButton1Click:Connect(function() teleportToPlayerByName(Sher
 heroTeleport.MouseButton1Click:Connect(function() teleportToPlayerByName(HeroName) end)
 
 --==================================================
+-- UTILITY SETTINGS
+--==================================================
+
+createSectionTitle("UTILITY SETTINGS")
+
+local antiVoidButton, antiVoidIndicator = createToggle("AntiVoid", "Anti Fall Down (Void)")
+local antiFlingButton, antiFlingIndicator = createToggle("AntiFling", "Anti Fling")
+
+antiVoidButton.MouseButton1Click:Connect(function()
+	antiVoidEnabled = not antiVoidEnabled
+	if antiVoidEnabled then
+		antiVoidButton.BackgroundColor3 = Color3.fromRGB(35, 70, 45)
+		antiVoidIndicator.BackgroundColor3 = Color3.fromRGB(50, 210, 90)
+	else
+		antiVoidButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
+		antiVoidIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+	end
+end)
+
+antiFlingButton.MouseButton1Click:Connect(function()
+	antiFlingEnabled = not antiFlingEnabled
+	if antiFlingEnabled then
+		antiFlingButton.BackgroundColor3 = Color3.fromRGB(35, 70, 45)
+		antiFlingIndicator.BackgroundColor3 = Color3.fromRGB(50, 210, 90)
+	else
+		antiFlingButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
+		antiFlingIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+	end
+end)
+
+local function resetAllToggles()
+	if noclip then
+		noclip = false
+		noclipButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
+		noclipIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		for object, oldValue in pairs(originalCollision) do
+			if object and object.Parent then
+				object.CanCollide = oldValue
+			end
+		end
+		originalCollision = {}
+	end
+
+	if flyEnabled then stopFly() end
+	flyPanelOpen = false
+	flyPanel.Visible = false
+
+	if infinityJump then
+		infinityJump = false
+		infinityJumpButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
+		infinityJumpIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+	end
+
+	if flingThirdParty then
+		flingThirdParty = false
+		flingThirdPartyButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
+		flingThirdPartyIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+	end
+
+	if flingOnTouch then
+		flingOnTouch = false
+		flingTouchActive = false
+		flingOnTouchButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
+		flingOnTouchIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+	end
+
+	if speedhackEnabled then
+		speedhackEnabled = false
+		speedhackButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
+		speedhackIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		local character = player.Character
+		if character then
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			if humanoid then humanoid.WalkSpeed = 16 end
+		end
+	end
+
+	for role, state in pairs(espEnabled) do
+		if state then
+			espEnabled[role] = false
+			if espButtons[role] then
+				espButtons[role].Button.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
+				espButtons[role].Indicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+			end
+		end
+	end
+
+	if autoNotifyRoles then
+		autoNotifyRoles = false
+		autoNotifyButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
+		autoNotifyIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+	end
+
+	if autoSendMurdererChat then
+		autoSendMurdererChat = false
+		autoMurdererChatButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
+		autoMurdererChatIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		lastChatSentMurderer = nil
+	end
+
+	if autoKillAll then
+		autoKillAll = false
+		autoKillButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
+		autoKillIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+	end
+
+	if autoGunTP then
+		autoGunTP = false
+		autoGunButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
+		autoGunIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+	end
+
+	if antiVoidEnabled then
+		antiVoidEnabled = false
+		antiVoidButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
+		antiVoidIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+	end
+
+	if antiFlingEnabled then
+		antiFlingEnabled = false
+		antiFlingButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
+		antiFlingIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+	end
+
+	sendNotification("MM2 Menu", "All features turned off")
+end
+
+local turnOffAllButton = Instance.new("TextButton")
+turnOffAllButton.Name = "TurnOffAll"
+turnOffAllButton.Size = UDim2.new(1, 0, 0, 36)
+turnOffAllButton.BackgroundColor3 = Color3.fromRGB(70, 40, 40)
+turnOffAllButton.BorderSizePixel = 0
+turnOffAllButton.Text = "TURN OFF ALL"
+turnOffAllButton.TextColor3 = Color3.fromRGB(255, 200, 200)
+turnOffAllButton.TextSize = 13
+turnOffAllButton.Font = Enum.Font.GothamBold
+turnOffAllButton.AutoButtonColor = false
+turnOffAllButton.LayoutOrder = getLayoutOrder()
+turnOffAllButton.Parent = content
+
+local turnOffCorner = Instance.new("UICorner")
+turnOffCorner.CornerRadius = UDim.new(0, 8)
+turnOffCorner.Parent = turnOffAllButton
+
+turnOffAllButton.MouseButton1Click:Connect(resetAllToggles)
+
+--==================================================
 -- ESP SYSTEM
 --==================================================
 
@@ -1494,6 +1742,11 @@ local function GetRoles()
 	end
 end
 
+--==================================================
+-- ESP HIGHLIGHT UPDATE
+-- When player dies: reset color to green (Innocent) regardless of role
+--==================================================
+
 local function UpdateHighlights()
 	for _, target in ipairs(Players:GetPlayers()) do
 		if target ~= player and target.Character then
@@ -1507,16 +1760,33 @@ local function UpdateHighlights()
 			elseif HeroName and target.Name == HeroName then role = "Hero"
 			else role = "Innocent" end
 
-			if espEnabled[role] and IsAlive(target) then
-				local color = ROLE_COLORS[role]
-				highlight.FillColor = color
-				highlight.OutlineColor = color
-				highlight.FillTransparency = 0.45
-				highlight.OutlineTransparency = 0
-				highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-				highlight.Enabled = true
+			-- If player is dead, force green (Innocent) highlight regardless of role
+			if not IsAlive(target) then
+				-- Only show the dead-green highlight if Innocent ESP is on
+				if espEnabled.Innocent then
+					local deadColor = ROLE_COLORS.Innocent
+					highlight.FillColor = deadColor
+					highlight.OutlineColor = deadColor
+					highlight.FillTransparency = 0.65
+					highlight.OutlineTransparency = 0
+					highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+					highlight.Enabled = true
+				else
+					highlight.Enabled = false
+				end
 			else
-				highlight.Enabled = false
+				-- Alive player — use role-based color
+				if espEnabled[role] then
+					local color = ROLE_COLORS[role]
+					highlight.FillColor = color
+					highlight.OutlineColor = color
+					highlight.FillTransparency = 0.45
+					highlight.OutlineTransparency = 0
+					highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+					highlight.Enabled = true
+				else
+					highlight.Enabled = false
+				end
 			end
 		end
 	end
@@ -1552,6 +1822,73 @@ end)
 Players.PlayerRemoving:Connect(function(target) RemoveHighlight(target) end)
 
 --==================================================
+-- AUTO CHAT MURDERER SENDER
+--==================================================
+
+local function sendChatMessage(message)
+	local sent = false
+
+	pcall(function()
+		local TCS = game:GetService("TextChatService")
+		if TCS.ChatVersion == Enum.ChatVersion.TextChatService then
+			local channels = TCS:FindFirstChild("TextChannels")
+			if channels then
+				local general = channels:FindFirstChild("RBXGeneral")
+				if general then
+					general:SendAsync(message)
+					sent = true
+				end
+			end
+		end
+	end)
+
+	if sent then return true end
+
+	pcall(function()
+		StarterGui:SetCore("ChatSendMessage", message)
+		sent = true
+	end)
+
+	return sent
+end
+
+local function checkAutoSendMurderer()
+	if not autoSendMurdererChat then return end
+
+	local murdererDetected = MurdererName ~= nil
+
+	if murdererDetected and not roundActive then
+		roundActive = true
+		lastChatSentMurderer = nil
+	end
+
+	if not murdererDetected and roundActive then
+		roundActive = false
+		lastChatSentMurderer = nil
+		return
+	end
+
+	if not murdererDetected then return end
+
+	if lastChatSentMurderer == MurdererName then return end
+
+	local now = tick()
+	if now - chatSendCooldown < 1 then return end
+
+	local targetPlayer = Players:FindFirstChild(MurdererName)
+	local displayText = MurdererName
+	if targetPlayer then
+		displayText = targetPlayer.DisplayName .. " (@" .. targetPlayer.Name .. ")"
+	end
+
+	local message = "Murderer is: " .. displayText
+	if sendChatMessage(message) then
+		lastChatSentMurderer = MurdererName
+		chatSendCooldown = now
+	end
+end
+
+--==================================================
 -- NOCLIP LOOP
 --==================================================
 
@@ -1563,14 +1900,111 @@ RunService.Stepped:Connect(function()
 end)
 
 --==================================================
+-- ANTI VOID LOOP
+--==================================================
+
+RunService.Heartbeat:Connect(function()
+	if not antiVoidEnabled or antiVoidCooldown then return end
+	if flyEnabled then return end
+	local character = player.Character
+	if not character then return end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+
+	if root.Position.Y < VOID_Y_THRESHOLD then
+		antiVoidCooldown = true
+
+		local spawnLocation = workspace:FindFirstChildOfClass("SpawnLocation")
+		local safePosition = nil
+
+		if spawnLocation then
+			safePosition = spawnLocation.Position + Vector3.new(0, 5, 0)
+		else
+			for _, target in ipairs(Players:GetPlayers()) do
+				if target ~= player and target.Character then
+					local tr = target.Character:FindFirstChild("HumanoidRootPart")
+					if tr and tr.Position.Y > VOID_Y_THRESHOLD then
+						safePosition = tr.Position + Vector3.new(0, 5, 0)
+						break
+					end
+				end
+			end
+		end
+
+		if safePosition then
+			root.CFrame = CFrame.new(safePosition)
+			root.Velocity = Vector3.zero
+		else
+			root.CFrame = CFrame.new(root.Position.X, 100, root.Position.Z)
+			root.Velocity = Vector3.zero
+		end
+
+		task.wait(0.5)
+		antiVoidCooldown = false
+	end
+end)
+
+--==================================================
+-- ANTI FLING LOOP
+--==================================================
+
+RunService.Heartbeat:Connect(function()
+	if not antiFlingEnabled then return end
+	if flyEnabled then return end
+	local character = player.Character
+	if not character then return end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+
+	local now = tick()
+	local velocity = root.AssemblyLinearVelocity
+	local speed = velocity.Magnitude
+
+	if speed < 100 and root.Position.Y > -50 then
+		lastSafePosition = root.CFrame
+		lastSafeUpdate = now
+	end
+
+	if speed > ANTI_FLING_MAX_SPEED then
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+		root.RotVelocity = Vector3.zero
+
+		if lastSafePosition and (now - lastSafeUpdate) < 5 then
+			root.CFrame = lastSafePosition
+		end
+	end
+
+	local angular = root.AssemblyAngularVelocity.Magnitude
+	if angular > ANTI_FLING_MAX_ANGULAR then
+		root.AssemblyAngularVelocity = Vector3.zero
+		root.RotVelocity = Vector3.zero
+	end
+end)
+
+--==================================================
 -- RESPAWN HANDLERS
 --==================================================
 
 player.CharacterAdded:Connect(function(character)
 	stopFly()
-	flyControls = { f = 0, b = 0, l = 0, r = 0, up = 0, down = 0 }
-	lastFlyControls = { f = 0, b = 0, l = 0, r = 0, up = 0, down = 0 }
+	flyControls.f = 0
+	flyControls.b = 0
+	flyControls.l = 0
+	flyControls.r = 0
+	flyControls.up = 0
+	flyControls.down = 0
+
+	lastFlyControls.f = 0
+	lastFlyControls.b = 0
+	lastFlyControls.l = 0
+	lastFlyControls.r = 0
+	lastFlyControls.up = 0
+	lastFlyControls.down = 0
+
 	originalCollision = {}
+	lastSafePosition = nil
+	antiVoidCooldown = false
 
 	if noclip then
 		task.wait(0.1)
@@ -1626,8 +2060,22 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 --==================================================
--- LOCK & MINIMIZE
+-- LOCK / MINIMIZE / CLOSE / REOPEN
 --==================================================
+
+local function showMenu()
+	menuVisible = true
+	frame.Visible = true
+	reopenButton.Visible = false
+end
+
+local function hideMenu()
+	menuVisible = false
+	frame.Visible = false
+	flyPanel.Visible = false
+	flyPanelOpen = false
+	reopenButton.Visible = true
+end
 
 lockButton.MouseButton1Click:Connect(function()
 	guiLocked = not guiLocked
@@ -1653,6 +2101,65 @@ minimizeButton.MouseButton1Click:Connect(function()
 	end
 end)
 
+closeButton.MouseButton1Click:Connect(function()
+	hideMenu()
+	sendNotification("MM2 Menu", "Menu closed. Click 'MM2' or press Right Shift to reopen.")
+end)
+
+closeButton.MouseEnter:Connect(function()
+	closeButton.BackgroundColor3 = Color3.fromRGB(180, 55, 55)
+end)
+
+closeButton.MouseLeave:Connect(function()
+	closeButton.BackgroundColor3 = Color3.fromRGB(42, 44, 52)
+end)
+
+reopenButton.MouseButton1Click:Connect(function()
+	showMenu()
+end)
+
+-- Failsafe keybind to toggle menu (Right Shift)
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then return end
+	if input.KeyCode == Enum.KeyCode.RightShift then
+		if menuVisible then
+			hideMenu()
+		else
+			showMenu()
+		end
+	end
+end)
+
+-- Make reopen button draggable
+local reopenDragging = false
+local reopenDragStart
+local reopenDragStartPosition
+
+reopenButton.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		reopenDragging = true
+		reopenDragStart = input.Position
+		reopenDragStartPosition = reopenButton.Position
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if not reopenDragging then return end
+	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+		local delta = input.Position - reopenDragStart
+		reopenButton.Position = UDim2.new(
+			reopenDragStartPosition.X.Scale, reopenDragStartPosition.X.Offset + delta.X,
+			reopenDragStartPosition.Y.Scale, reopenDragStartPosition.Y.Offset + delta.Y
+		)
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		reopenDragging = false
+	end
+end)
+
 --==================================================
 -- INITIAL SETUP & LOOPS
 --==================================================
@@ -1662,14 +2169,21 @@ UpdateHighlights()
 
 task.spawn(function()
 	while gui.Parent do
-		GetRoles()
-		UpdateHighlights()
-		if autoKillAll and MurdererName == player.Name then
-			killAllPlayers()
-		end
-		if autoGunTP then
-			teleportToGun()
-		end
+		pcall(function()
+			GetRoles()
+			UpdateHighlights()
+
+			if autoKillAll and MurdererName == player.Name then
+				killAllPlayers()
+			end
+
+			if autoGunTP then
+				teleportToGun()
+			end
+
+			checkAutoSendMurderer()
+		end)
+
 		task.wait(0.25)
 	end
 end)
