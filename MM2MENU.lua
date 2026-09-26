@@ -243,7 +243,7 @@ lockButton.Name = "Lock"
 lockButton.Size = UDim2.fromOffset(30, 30)
 lockButton.Position = UDim2.new(1, -70, 0.5, -15)
 lockButton.BackgroundColor3 = Color3.fromRGB(42, 44, 52)
-lockButton.Text = "U"
+lockButton.Text = "🔓"
 lockButton.TextSize = 14
 lockButton.TextColor3 = Color3.new(1, 1, 1)
 lockButton.Font = Enum.Font.GothamBold
@@ -299,14 +299,6 @@ resizeHandle.Parent = frame
 local resizeCorner = Instance.new("UICorner")
 resizeCorner.CornerRadius = UDim.new(0, 4)
 resizeCorner.Parent = resizeHandle
-
--- Small visual indicator on the handle
-local resizeLines = Instance.new("Frame")
-resizeLines.Size = UDim2.new(1, -6, 1, -6)
-resizeLines.Position = UDim2.fromOffset(3, 3)
-resizeLines.BackgroundTransparency = 1
-resizeLines.ZIndex = 31
-resizeLines.Parent = resizeHandle
 
 local MIN_WIDTH = 240
 local MIN_HEIGHT = 200
@@ -2090,10 +2082,10 @@ end
 lockButton.MouseButton1Click:Connect(function()
 	guiLocked = not guiLocked
 	if guiLocked then
-		lockButton.Text = "L"
-		lockButton.BackgroundColor3 = Color3.fromRGB(55, 57, 65)
+		lockButton.Text = "🔒"
+		lockButton.BackgroundColor3 = Color3.fromRGB(70, 45, 45)
 	else
-		lockButton.Text = "U"
+		lockButton.Text = "🔓"
 		lockButton.BackgroundColor3 = Color3.fromRGB(42, 44, 52)
 	end
 end)
