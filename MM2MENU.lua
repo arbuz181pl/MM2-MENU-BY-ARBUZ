@@ -1,8 +1,7 @@
 --//==================================================
 --// MM2 MENU BY ARBUZ v0.9BETA
 --//==================================================
---// LocalScript
---// StarterPlayer > StarterPlayerScripts
+--// Loaded via loadstring
 --//==================================================
 
 local Players = game:GetService("Players")
@@ -108,7 +107,7 @@ pcall(function()
 end)
 
 --==================================================
--- PLAYER DATA (safe lookup — won't error if missing)
+-- PLAYER DATA (safe lookup)
 --==================================================
 
 local GetPlayerData = nil
@@ -116,9 +115,10 @@ pcall(function()
 	GetPlayerData = ReplicatedStorage:FindFirstChild("GetPlayerData", true)
 end)
 
-local MurdererName
-local SheriffName
-local HeroName
+-- PERSISTENT role names — only reset on round change, not every poll
+local MurdererName = nil
+local SheriffName = nil
+local HeroName = nil
 
 local lastNotifiedMurderer = nil
 local lastNotifiedSheriff = nil
@@ -141,6 +141,9 @@ end
 --==================================================
 -- GUI
 --==================================================
+
+local existingGui = playerGui:FindFirstChild("MM2MenuByArbuz")
+if existingGui then existingGui:Destroy() end
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "MM2MenuByArbuz"
@@ -217,8 +220,8 @@ closeButton.Name = "Close"
 closeButton.Size = UDim2.fromOffset(30, 30)
 closeButton.Position = UDim2.new(1, -105, 0.5, -15)
 closeButton.BackgroundColor3 = Color3.fromRGB(42, 44, 52)
-closeButton.Text = "✕"
-closeButton.TextSize = 14
+closeButton.Text = "X"
+closeButton.TextSize = 16
 closeButton.TextColor3 = Color3.fromRGB(255, 200, 200)
 closeButton.Font = Enum.Font.GothamBold
 closeButton.BorderSizePixel = 0
@@ -240,8 +243,8 @@ lockButton.Name = "Lock"
 lockButton.Size = UDim2.fromOffset(30, 30)
 lockButton.Position = UDim2.new(1, -70, 0.5, -15)
 lockButton.BackgroundColor3 = Color3.fromRGB(42, 44, 52)
-lockButton.Text = "🔓"
-lockButton.TextSize = 15
+lockButton.Text = "U"
+lockButton.TextSize = 14
 lockButton.TextColor3 = Color3.new(1, 1, 1)
 lockButton.Font = Enum.Font.GothamBold
 lockButton.BorderSizePixel = 0
@@ -263,7 +266,7 @@ minimizeButton.Name = "Minimize"
 minimizeButton.Size = UDim2.fromOffset(30, 30)
 minimizeButton.Position = UDim2.new(1, -35, 0.5, -15)
 minimizeButton.BackgroundColor3 = Color3.fromRGB(42, 44, 52)
-minimizeButton.Text = "—"
+minimizeButton.Text = "-"
 minimizeButton.TextColor3 = Color3.new(1, 1, 1)
 minimizeButton.TextSize = 17
 minimizeButton.Font = Enum.Font.GothamBold
@@ -276,6 +279,65 @@ minimizeButton.Parent = header
 local minimizeCorner = Instance.new("UICorner")
 minimizeCorner.CornerRadius = UDim.new(0, 7)
 minimizeCorner.Parent = minimizeButton
+
+--==================================================
+-- RESIZE HANDLE (bottom-right corner)
+--==================================================
+
+local resizeHandle = Instance.new("TextButton")
+resizeHandle.Name = "ResizeHandle"
+resizeHandle.Size = UDim2.fromOffset(16, 16)
+resizeHandle.Position = UDim2.new(1, -16, 1, -16)
+resizeHandle.BackgroundColor3 = Color3.fromRGB(55, 57, 65)
+resizeHandle.BorderSizePixel = 0
+resizeHandle.Text = ""
+resizeHandle.AutoButtonColor = false
+resizeHandle.Active = true
+resizeHandle.ZIndex = 30
+resizeHandle.Parent = frame
+
+local resizeCorner = Instance.new("UICorner")
+resizeCorner.CornerRadius = UDim.new(0, 4)
+resizeCorner.Parent = resizeHandle
+
+-- Small visual indicator on the handle
+local resizeLines = Instance.new("Frame")
+resizeLines.Size = UDim2.new(1, -6, 1, -6)
+resizeLines.Position = UDim2.fromOffset(3, 3)
+resizeLines.BackgroundTransparency = 1
+resizeLines.ZIndex = 31
+resizeLines.Parent = resizeHandle
+
+local MIN_WIDTH = 240
+local MIN_HEIGHT = 200
+
+local resizing = false
+local resizeStart
+local resizeStartSize
+
+resizeHandle.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		resizing = true
+		resizeStart = input.Position
+		resizeStartSize = frame.AbsoluteSize
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if not resizing then return end
+	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+		local delta = input.Position - resizeStart
+		local newWidth = math.max(MIN_WIDTH, resizeStartSize.X + delta.X)
+		local newHeight = math.max(MIN_HEIGHT, resizeStartSize.Y + delta.Y)
+		frame.Size = UDim2.fromOffset(newWidth, newHeight)
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		resizing = false
+	end
+end)
 
 --==================================================
 -- REOPEN BUTTON
@@ -335,7 +397,7 @@ local function getLayoutOrder()
 end
 
 --==================================================
--- SECTION TITLE CREATOR
+-- HELPERS
 --==================================================
 
 local function createSectionTitle(text)
@@ -352,12 +414,6 @@ local function createSectionTitle(text)
 	label.Parent = content
 	return label
 end
-
---==================================================
--- MOVEMENT SETTINGS
---==================================================
-
-createSectionTitle("MOVEMENT SETTINGS")
 
 local function createToggle(name, text)
 	local button = Instance.new("TextButton")
@@ -392,14 +448,50 @@ local function createToggle(name, text)
 	return button, indicator
 end
 
+local function createActionButton(name, text)
+	local button = Instance.new("TextButton")
+	button.Name = name
+	button.Size = UDim2.new(1, 0, 0, 36)
+	button.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
+	button.BorderSizePixel = 0
+	button.Text = text
+	button.TextColor3 = Color3.fromRGB(230, 230, 235)
+	button.TextSize = 13
+	button.Font = Enum.Font.GothamSemibold
+	button.AutoButtonColor = false
+	button.LayoutOrder = getLayoutOrder()
+	button.Parent = content
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = button
+
+	return button
+end
+
+local function setToggleOn(button, indicator)
+	button.BackgroundColor3 = Color3.fromRGB(35, 70, 45)
+	indicator.BackgroundColor3 = Color3.fromRGB(50, 210, 90)
+end
+
+local function setToggleOff(button, indicator)
+	button.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
+	indicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+end
+
+--==================================================
+-- MOVEMENT SETTINGS
+--==================================================
+
+createSectionTitle("MOVEMENT SETTINGS")
+
 -- NOCLIP
 local noclipButton, noclipIndicator = createToggle("Noclip", "Noclip")
 
 noclipButton.MouseButton1Click:Connect(function()
 	noclip = not noclip
 	if noclip then
-		noclipButton.BackgroundColor3 = Color3.fromRGB(35, 70, 45)
-		noclipIndicator.BackgroundColor3 = Color3.fromRGB(50, 210, 90)
+		setToggleOn(noclipButton, noclipIndicator)
 		originalCollision = {}
 
 		if player.Character then
@@ -411,8 +503,7 @@ noclipButton.MouseButton1Click:Connect(function()
 			end
 		end
 	else
-		noclipButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		noclipIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(noclipButton, noclipIndicator)
 
 		for object, oldValue in pairs(originalCollision) do
 			if object and object.Parent then
@@ -446,7 +537,6 @@ flyPanelStroke.Color = Color3.fromRGB(55, 57, 65)
 flyPanelStroke.Thickness = 1
 flyPanelStroke.Parent = flyPanel
 
--- FLY PANEL HEADER
 local flyHeader = Instance.new("Frame")
 flyHeader.Name = "Header"
 flyHeader.Size = UDim2.new(1, 0, 0, 42)
@@ -473,7 +563,6 @@ flyTitle.TextYAlignment = Enum.TextYAlignment.Center
 flyTitle.ZIndex = 22
 flyTitle.Parent = flyHeader
 
--- FLY ENABLE BUTTON
 local flyEnableButton = Instance.new("TextButton")
 flyEnableButton.Name = "Enable"
 flyEnableButton.Size = UDim2.new(1, -20, 0, 36)
@@ -505,7 +594,6 @@ local flyEnableIndicatorCorner = Instance.new("UICorner")
 flyEnableIndicatorCorner.CornerRadius = UDim.new(1, 0)
 flyEnableIndicatorCorner.Parent = flyEnableIndicator
 
--- FLY SPEED LABEL
 local flySpeedLabel = Instance.new("TextLabel")
 flySpeedLabel.Name = "SpeedLabel"
 flySpeedLabel.Size = UDim2.new(1, -20, 0, 20)
@@ -519,7 +607,6 @@ flySpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
 flySpeedLabel.ZIndex = 21
 flySpeedLabel.Parent = flyPanel
 
--- FLY SPEED MINUS
 local flyMinus = Instance.new("TextButton")
 flyMinus.Name = "Minus"
 flyMinus.Size = UDim2.fromOffset(36, 32)
@@ -538,7 +625,6 @@ local flyMinusCorner = Instance.new("UICorner")
 flyMinusCorner.CornerRadius = UDim.new(0, 7)
 flyMinusCorner.Parent = flyMinus
 
--- FLY SPEED BOX
 local flySpeedBox = Instance.new("TextBox")
 flySpeedBox.Name = "Speed"
 flySpeedBox.Size = UDim2.new(1, -96, 0, 32)
@@ -557,7 +643,6 @@ local flySpeedBoxCorner = Instance.new("UICorner")
 flySpeedBoxCorner.CornerRadius = UDim.new(0, 7)
 flySpeedBoxCorner.Parent = flySpeedBox
 
--- FLY SPEED PLUS
 local flyPlus = Instance.new("TextButton")
 flyPlus.Name = "Plus"
 flyPlus.Size = UDim2.fromOffset(36, 32)
@@ -576,7 +661,6 @@ local flyPlusCorner = Instance.new("UICorner")
 flyPlusCorner.CornerRadius = UDim.new(0, 7)
 flyPlusCorner.Parent = flyPlus
 
--- FLY UP & DOWN
 local flyUp = Instance.new("TextButton")
 flyUp.Name = "Up"
 flyUp.Size = UDim2.fromOffset(85, 32)
@@ -647,10 +731,8 @@ local function stopFly()
 	end
 
 	flyEnableButton.Text = "Enable Fly"
-	flyEnableButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-	flyEnableIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
-	flyButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-	flyIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+	setToggleOff(flyEnableButton, flyEnableIndicator)
+	setToggleOff(flyButton, flyIndicator)
 end
 
 local function startFly()
@@ -691,10 +773,8 @@ local function startFly()
 	humanoid:ChangeState(Enum.HumanoidStateType.Swimming)
 
 	flyEnableButton.Text = "Disable Fly"
-	flyEnableButton.BackgroundColor3 = Color3.fromRGB(35, 70, 45)
-	flyEnableIndicator.BackgroundColor3 = Color3.fromRGB(50, 210, 90)
-	flyButton.BackgroundColor3 = Color3.fromRGB(35, 70, 45)
-	flyIndicator.BackgroundColor3 = Color3.fromRGB(50, 210, 90)
+	setToggleOn(flyEnableButton, flyEnableIndicator)
+	setToggleOn(flyButton, flyIndicator)
 end
 
 flyEnableButton.MouseButton1Click:Connect(function()
@@ -708,11 +788,9 @@ flyButton.MouseButton1Click:Connect(function()
 		flyButton.BackgroundColor3 = Color3.fromRGB(45, 47, 56)
 	else
 		if flyEnabled then
-			flyButton.BackgroundColor3 = Color3.fromRGB(35, 70, 45)
-			flyIndicator.BackgroundColor3 = Color3.fromRGB(50, 210, 90)
+			setToggleOn(flyButton, flyIndicator)
 		else
-			flyButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-			flyIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+			setToggleOff(flyButton, flyIndicator)
 		end
 	end
 end)
@@ -818,11 +896,9 @@ local infinityJumpButton, infinityJumpIndicator = createToggle("InfinityJump", "
 infinityJumpButton.MouseButton1Click:Connect(function()
 	infinityJump = not infinityJump
 	if infinityJump then
-		infinityJumpButton.BackgroundColor3 = Color3.fromRGB(35, 70, 45)
-		infinityJumpIndicator.BackgroundColor3 = Color3.fromRGB(50, 210, 90)
+		setToggleOn(infinityJumpButton, infinityJumpIndicator)
 	else
-		infinityJumpButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		infinityJumpIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(infinityJumpButton, infinityJumpIndicator)
 	end
 end)
 
@@ -845,15 +921,14 @@ flingThirdPartyButton.MouseButton1Click:Connect(function()
 	if flingThirdParty then
 		flingThirdPartyButton.BackgroundColor3 = Color3.fromRGB(70, 45, 35)
 		flingThirdPartyIndicator.BackgroundColor3 = Color3.fromRGB(230, 100, 55)
-		local success, err = pcall(function()
+		local success = pcall(function()
 			loadstring(game:HttpGet("https://rawscripts.net/raw/Universal-Script-Ultimate-Fling-GUI-41909"))()
 		end)
 		if not success then
 			sendNotification("MM2 Menu", "Failed to load 3rd party fling script.")
 		end
 	else
-		flingThirdPartyButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		flingThirdPartyIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(flingThirdPartyButton, flingThirdPartyIndicator)
 	end
 end)
 
@@ -893,13 +968,15 @@ flingOnTouchButton.MouseButton1Click:Connect(function()
 		flingTouchThread = coroutine.create(flingOnTouchLoop)
 		coroutine.resume(flingTouchThread)
 	else
-		flingOnTouchButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		flingOnTouchIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(flingOnTouchButton, flingOnTouchIndicator)
 		flingTouchActive = false
 	end
 end)
 
+--==================================================
 -- SPEEDHACK
+--==================================================
+
 local speedhackButton, speedhackIndicator = createToggle("Speedhack", "Speedhack")
 
 local speedhackRow = Instance.new("Frame")
@@ -910,9 +987,7 @@ speedhackRow.LayoutOrder = getLayoutOrder()
 speedhackRow.Parent = content
 
 local speedhackMinus = Instance.new("TextButton")
-speedhackMinus.Name = "Minus"
 speedhackMinus.Size = UDim2.fromOffset(36, 32)
-speedhackMinus.Position = UDim2.fromOffset(0, 0)
 speedhackMinus.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
 speedhackMinus.BorderSizePixel = 0
 speedhackMinus.Text = "-"
@@ -922,12 +997,7 @@ speedhackMinus.Font = Enum.Font.GothamBold
 speedhackMinus.AutoButtonColor = false
 speedhackMinus.Parent = speedhackRow
 
-local speedhackMinusCorner = Instance.new("UICorner")
-speedhackMinusCorner.CornerRadius = UDim.new(0, 7)
-speedhackMinusCorner.Parent = speedhackMinus
-
 local speedhackBox = Instance.new("TextBox")
-speedhackBox.Name = "Speed"
 speedhackBox.Size = UDim2.fromOffset(50, 32)
 speedhackBox.Position = UDim2.fromOffset(42, 0)
 speedhackBox.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
@@ -939,12 +1009,7 @@ speedhackBox.Font = Enum.Font.GothamSemibold
 speedhackBox.ClearTextOnFocus = false
 speedhackBox.Parent = speedhackRow
 
-local speedhackBoxCorner = Instance.new("UICorner")
-speedhackBoxCorner.CornerRadius = UDim.new(0, 7)
-speedhackBoxCorner.Parent = speedhackBox
-
 local speedhackPlus = Instance.new("TextButton")
-speedhackPlus.Name = "Plus"
 speedhackPlus.Size = UDim2.fromOffset(36, 32)
 speedhackPlus.Position = UDim2.fromOffset(100, 0)
 speedhackPlus.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
@@ -956,12 +1021,7 @@ speedhackPlus.Font = Enum.Font.GothamBold
 speedhackPlus.AutoButtonColor = false
 speedhackPlus.Parent = speedhackRow
 
-local speedhackPlusCorner = Instance.new("UICorner")
-speedhackPlusCorner.CornerRadius = UDim.new(0, 7)
-speedhackPlusCorner.Parent = speedhackPlus
-
 local speedhackValueLabel = Instance.new("TextLabel")
-speedhackValueLabel.Name = "SpeedLabel"
 speedhackValueLabel.Size = UDim2.new(1, -145, 0, 32)
 speedhackValueLabel.Position = UDim2.fromOffset(145, 0)
 speedhackValueLabel.BackgroundTransparency = 1
@@ -987,16 +1047,14 @@ speedhackBox.FocusLost:Connect(function() updateSpeedhack(speedhackBox.Text) end
 speedhackButton.MouseButton1Click:Connect(function()
 	speedhackEnabled = not speedhackEnabled
 	if speedhackEnabled then
-		speedhackButton.BackgroundColor3 = Color3.fromRGB(35, 70, 45)
-		speedhackIndicator.BackgroundColor3 = Color3.fromRGB(50, 210, 90)
+		setToggleOn(speedhackButton, speedhackIndicator)
 		local character = player.Character
 		if character then
 			local humanoid = character:FindFirstChildOfClass("Humanoid")
 			if humanoid then humanoid.WalkSpeed = speedhackSpeed end
 		end
 	else
-		speedhackButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		speedhackIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(speedhackButton, speedhackIndicator)
 		local character = player.Character
 		if character then
 			local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -1027,13 +1085,11 @@ local function createESPButton(role)
 
 	button.MouseButton1Click:Connect(function()
 		espEnabled[role] = not espEnabled[role]
-		button.Text = role .. " ESP"
 		if espEnabled[role] then
 			button.BackgroundColor3 = ROLE_COLORS[role]:Lerp(Color3.fromRGB(20, 20, 25), 0.65)
 			indicator.BackgroundColor3 = ROLE_COLORS[role]
 		else
-			button.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-			indicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+			setToggleOff(button, indicator)
 		end
 	end)
 end
@@ -1065,23 +1121,7 @@ local function notifyAllRoles()
 	sendNotification("MM2 Roles", mText .. "\n" .. sText .. "\n" .. hText)
 end
 
-local notifyRolesButton = Instance.new("TextButton")
-notifyRolesButton.Name = "NotifyRoles"
-notifyRolesButton.Size = UDim2.new(1, 0, 0, 36)
-notifyRolesButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-notifyRolesButton.BorderSizePixel = 0
-notifyRolesButton.Text = "Notify Roles"
-notifyRolesButton.TextColor3 = Color3.fromRGB(230, 230, 235)
-notifyRolesButton.TextSize = 13
-notifyRolesButton.Font = Enum.Font.GothamSemibold
-notifyRolesButton.AutoButtonColor = false
-notifyRolesButton.LayoutOrder = getLayoutOrder()
-notifyRolesButton.Parent = content
-
-local notifyCorner = Instance.new("UICorner")
-notifyCorner.CornerRadius = UDim.new(0, 8)
-notifyCorner.Parent = notifyRolesButton
-
+local notifyRolesButton = createActionButton("NotifyRoles", "Notify Roles")
 notifyRolesButton.MouseButton1Click:Connect(function()
 	notifyAllRoles()
 end)
@@ -1091,11 +1131,9 @@ local autoNotifyButton, autoNotifyIndicator = createToggle("AutoNotifyRound", "A
 autoNotifyButton.MouseButton1Click:Connect(function()
 	autoNotifyRoles = not autoNotifyRoles
 	if autoNotifyRoles then
-		autoNotifyButton.BackgroundColor3 = Color3.fromRGB(35, 70, 45)
-		autoNotifyIndicator.BackgroundColor3 = Color3.fromRGB(50, 210, 90)
+		setToggleOn(autoNotifyButton, autoNotifyIndicator)
 	else
-		autoNotifyButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		autoNotifyIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(autoNotifyButton, autoNotifyIndicator)
 	end
 end)
 
@@ -1108,18 +1146,16 @@ local autoMurdererChatButton, autoMurdererChatIndicator = createToggle("AutoMurd
 autoMurdererChatButton.MouseButton1Click:Connect(function()
 	autoSendMurdererChat = not autoSendMurdererChat
 	if autoSendMurdererChat then
-		autoMurdererChatButton.BackgroundColor3 = Color3.fromRGB(35, 70, 45)
-		autoMurdererChatIndicator.BackgroundColor3 = Color3.fromRGB(50, 210, 90)
+		setToggleOn(autoMurdererChatButton, autoMurdererChatIndicator)
 		lastChatSentMurderer = nil
 	else
-		autoMurdererChatButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		autoMurdererChatIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(autoMurdererChatButton, autoMurdererChatIndicator)
 		lastChatSentMurderer = nil
 	end
 end)
 
 --==================================================
--- SPAWN & LOBBY PROTECTION UTILITIES
+-- SPAWN & LOBBY PROTECTION
 --==================================================
 
 local function isPlayerInSpawn(target)
@@ -1206,34 +1242,11 @@ local autoKillButton, autoKillIndicator = createToggle("AutoKillAll", "Auto Kill
 autoKillButton.MouseButton1Click:Connect(function()
 	autoKillAll = not autoKillAll
 	if autoKillAll then
-		autoKillButton.BackgroundColor3 = Color3.fromRGB(35, 70, 45)
-		autoKillIndicator.BackgroundColor3 = Color3.fromRGB(50, 210, 90)
+		setToggleOn(autoKillButton, autoKillIndicator)
 	else
-		autoKillButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		autoKillIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(autoKillButton, autoKillIndicator)
 	end
 end)
-
-local function createActionButton(name, text)
-	local button = Instance.new("TextButton")
-	button.Name = name
-	button.Size = UDim2.new(1, 0, 0, 36)
-	button.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-	button.BorderSizePixel = 0
-	button.Text = text
-	button.TextColor3 = Color3.fromRGB(230, 230, 235)
-	button.TextSize = 13
-	button.Font = Enum.Font.GothamSemibold
-	button.AutoButtonColor = false
-	button.LayoutOrder = getLayoutOrder()
-	button.Parent = content
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 8)
-	corner.Parent = button
-
-	return button
-end
 
 local killAllButton = createActionButton("KillAllNow", "Kill All Now")
 killAllButton.MouseButton1Click:Connect(function()
@@ -1343,11 +1356,9 @@ local autoGunButton, autoGunIndicator = createToggle("AutoGunTP", "Auto Teleport
 autoGunButton.MouseButton1Click:Connect(function()
 	autoGunTP = not autoGunTP
 	if autoGunTP then
-		autoGunButton.BackgroundColor3 = Color3.fromRGB(35, 70, 45)
-		autoGunIndicator.BackgroundColor3 = Color3.fromRGB(50, 210, 90)
+		setToggleOn(autoGunButton, autoGunIndicator)
 	else
-		autoGunButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		autoGunIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(autoGunButton, autoGunIndicator)
 	end
 end)
 
@@ -1529,30 +1540,25 @@ local antiFlingButton, antiFlingIndicator = createToggle("AntiFling", "Anti Flin
 antiVoidButton.MouseButton1Click:Connect(function()
 	antiVoidEnabled = not antiVoidEnabled
 	if antiVoidEnabled then
-		antiVoidButton.BackgroundColor3 = Color3.fromRGB(35, 70, 45)
-		antiVoidIndicator.BackgroundColor3 = Color3.fromRGB(50, 210, 90)
+		setToggleOn(antiVoidButton, antiVoidIndicator)
 	else
-		antiVoidButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		antiVoidIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(antiVoidButton, antiVoidIndicator)
 	end
 end)
 
 antiFlingButton.MouseButton1Click:Connect(function()
 	antiFlingEnabled = not antiFlingEnabled
 	if antiFlingEnabled then
-		antiFlingButton.BackgroundColor3 = Color3.fromRGB(35, 70, 45)
-		antiFlingIndicator.BackgroundColor3 = Color3.fromRGB(50, 210, 90)
+		setToggleOn(antiFlingButton, antiFlingIndicator)
 	else
-		antiFlingButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		antiFlingIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(antiFlingButton, antiFlingIndicator)
 	end
 end)
 
 local function resetAllToggles()
 	if noclip then
 		noclip = false
-		noclipButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		noclipIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(noclipButton, noclipIndicator)
 		for object, oldValue in pairs(originalCollision) do
 			if object and object.Parent then
 				object.CanCollide = oldValue
@@ -1567,27 +1573,23 @@ local function resetAllToggles()
 
 	if infinityJump then
 		infinityJump = false
-		infinityJumpButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		infinityJumpIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(infinityJumpButton, infinityJumpIndicator)
 	end
 
 	if flingThirdParty then
 		flingThirdParty = false
-		flingThirdPartyButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		flingThirdPartyIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(flingThirdPartyButton, flingThirdPartyIndicator)
 	end
 
 	if flingOnTouch then
 		flingOnTouch = false
 		flingTouchActive = false
-		flingOnTouchButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		flingOnTouchIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(flingOnTouchButton, flingOnTouchIndicator)
 	end
 
 	if speedhackEnabled then
 		speedhackEnabled = false
-		speedhackButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		speedhackIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(speedhackButton, speedhackIndicator)
 		local character = player.Character
 		if character then
 			local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -1599,47 +1601,40 @@ local function resetAllToggles()
 		if state then
 			espEnabled[role] = false
 			if espButtons[role] then
-				espButtons[role].Button.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-				espButtons[role].Indicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+				setToggleOff(espButtons[role].Button, espButtons[role].Indicator)
 			end
 		end
 	end
 
 	if autoNotifyRoles then
 		autoNotifyRoles = false
-		autoNotifyButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		autoNotifyIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(autoNotifyButton, autoNotifyIndicator)
 	end
 
 	if autoSendMurdererChat then
 		autoSendMurdererChat = false
-		autoMurdererChatButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		autoMurdererChatIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(autoMurdererChatButton, autoMurdererChatIndicator)
 		lastChatSentMurderer = nil
 	end
 
 	if autoKillAll then
 		autoKillAll = false
-		autoKillButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		autoKillIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(autoKillButton, autoKillIndicator)
 	end
 
 	if autoGunTP then
 		autoGunTP = false
-		autoGunButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		autoGunIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(autoGunButton, autoGunIndicator)
 	end
 
 	if antiVoidEnabled then
 		antiVoidEnabled = false
-		antiVoidButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		antiVoidIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(antiVoidButton, antiVoidIndicator)
 	end
 
 	if antiFlingEnabled then
 		antiFlingEnabled = false
-		antiFlingButton.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
-		antiFlingIndicator.BackgroundColor3 = Color3.fromRGB(80, 82, 90)
+		setToggleOff(antiFlingButton, antiFlingIndicator)
 	end
 
 	sendNotification("MM2 Menu", "All features turned off")
@@ -1665,14 +1660,13 @@ turnOffCorner.Parent = turnOffAllButton
 turnOffAllButton.MouseButton1Click:Connect(resetAllToggles)
 
 --==================================================
--- ESP SYSTEM
+-- ESP SYSTEM (FIXED — no flicker)
 --==================================================
 
 local highlights = {}
 
 local function CreateHighlight(target)
 	if target == player or not target.Character then return end
-
 	local highlight = target.Character:FindFirstChild("RoleESP")
 	if not highlight then
 		highlight = Instance.new("Highlight")
@@ -1691,43 +1685,66 @@ local function IsAlive(target)
 	return humanoid and humanoid.Health > 0
 end
 
+-- FIXED GetRoles — only clears names when we actually have new data
 local function GetRoles()
-	MurdererName = nil
-	SheriffName = nil
-	HeroName = nil
-
 	if not GetPlayerData then return end
 
 	local success, result = pcall(function() return GetPlayerData:InvokeServer() end)
-	if not success or type(result) ~= "table" then return end
+	if not success or type(result) ~= "table" then
+		-- Remote failed: keep old names, don't wipe
+		return
+	end
+
+	-- New data received — replace names
+	local newMurderer, newSheriff, newHero = nil, nil, nil
 
 	for name, data in pairs(result) do
 		if type(data) == "table" then
 			local role = data.Role
-			if role == "Murderer" then MurdererName = tostring(name)
-			elseif role == "Sheriff" then SheriffName = tostring(name)
-			elseif role == "Hero" then HeroName = tostring(name) end
+			if role == "Murderer" then newMurderer = tostring(name)
+			elseif role == "Sheriff" then newSheriff = tostring(name)
+			elseif role == "Hero" then newHero = tostring(name) end
 		elseif type(data) == "string" then
-			if data == "Murderer" then MurdererName = tostring(name)
-			elseif data == "Sheriff" then SheriffName = tostring(name)
-			elseif data == "Hero" then HeroName = tostring(name) end
+			if data == "Murderer" then newMurderer = tostring(name)
+			elseif data == "Sheriff" then newSheriff = tostring(name)
+			elseif data == "Hero" then newHero = tostring(name) end
 		end
 	end
 
 	for key, data in pairs(result) do
 		if typeof(key) == "Instance" and key:IsA("Player") then
 			local role = type(data) == "table" and data.Role or (type(data) == "string" and data or nil)
-			if role == "Murderer" then MurdererName = key.Name
-			elseif role == "Sheriff" then SheriffName = key.Name
-			elseif role == "Hero" then HeroName = key.Name end
+			if role == "Murderer" then newMurderer = key.Name
+			elseif role == "Sheriff" then newSheriff = key.Name
+			elseif role == "Hero" then newHero = key.Name end
 		end
 	end
 
+	-- Attribute fallback
 	for _, target in ipairs(Players:GetPlayers()) do
 		local role = target:GetAttribute("Role")
-		if role == "Murderer" then MurdererName = target.Name
-		elseif role == "Sheriff" then SheriffName = target.Name
-		elseif role == "Hero" then HeroName = target.Name end
+		if role == "Murderer" then newMurderer = target.Name
+		elseif role == "Sheriff" then newSheriff = target.Name
+		elseif role == "Hero" then newHero = target.Name end
+	end
+
+	-- Only update globals if we actually found something OR the player left
+	if newMurderer then
+		MurdererName = newMurderer
+	elseif MurdererName and not Players:FindFirstChild(MurdererName) then
+		MurdererName = nil
+	end
+
+	if newSheriff then
+		SheriffName = newSheriff
+	elseif SheriffName and not Players:FindFirstChild(SheriffName) then
+		SheriffName = nil
+	end
+
+	if newHero then
+		HeroName = newHero
+	elseif HeroName and not Players:FindFirstChild(HeroName) then
+		HeroName = nil
 	end
 
 	if autoNotifyRoles then
@@ -1742,11 +1759,6 @@ local function GetRoles()
 	end
 end
 
---==================================================
--- ESP HIGHLIGHT UPDATE
--- When player dies: reset color to green (Innocent) regardless of role
---==================================================
-
 local function UpdateHighlights()
 	for _, target in ipairs(Players:GetPlayers()) do
 		if target ~= player and target.Character then
@@ -1760,22 +1772,21 @@ local function UpdateHighlights()
 			elseif HeroName and target.Name == HeroName then role = "Hero"
 			else role = "Innocent" end
 
-			-- If player is dead, force green (Innocent) highlight regardless of role
 			if not IsAlive(target) then
-				-- Only show the dead-green highlight if Innocent ESP is on
+				-- Dead player: reset to green (Innocent)
 				if espEnabled.Innocent then
 					local deadColor = ROLE_COLORS.Innocent
 					highlight.FillColor = deadColor
 					highlight.OutlineColor = deadColor
-					highlight.FillTransparency = 0.65
-					highlight.OutlineTransparency = 0
+					highlight.FillTransparency = 0.7
+					highlight.OutlineTransparency = 0.2
 					highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 					highlight.Enabled = true
 				else
 					highlight.Enabled = false
 				end
 			else
-				-- Alive player — use role-based color
+				-- Alive: role color
 				if espEnabled[role] then
 					local color = ROLE_COLORS[role]
 					highlight.FillColor = color
@@ -1869,7 +1880,6 @@ local function checkAutoSendMurderer()
 	end
 
 	if not murdererDetected then return end
-
 	if lastChatSentMurderer == MurdererName then return end
 
 	local now = tick()
@@ -2080,10 +2090,10 @@ end
 lockButton.MouseButton1Click:Connect(function()
 	guiLocked = not guiLocked
 	if guiLocked then
-		lockButton.Text = "🔒"
+		lockButton.Text = "L"
 		lockButton.BackgroundColor3 = Color3.fromRGB(55, 57, 65)
 	else
-		lockButton.Text = "🔓"
+		lockButton.Text = "U"
 		lockButton.BackgroundColor3 = Color3.fromRGB(42, 44, 52)
 	end
 end)
@@ -2097,7 +2107,7 @@ minimizeButton.MouseButton1Click:Connect(function()
 	else
 		content.Visible = true
 		frame.Size = UDim2.fromOffset(280, 330)
-		minimizeButton.Text = "—"
+		minimizeButton.Text = "-"
 	end
 end)
 
@@ -2118,7 +2128,6 @@ reopenButton.MouseButton1Click:Connect(function()
 	showMenu()
 end)
 
--- Failsafe keybind to toggle menu (Right Shift)
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
 	if input.KeyCode == Enum.KeyCode.RightShift then
@@ -2130,7 +2139,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 end)
 
--- Make reopen button draggable
 local reopenDragging = false
 local reopenDragStart
 local reopenDragStartPosition
