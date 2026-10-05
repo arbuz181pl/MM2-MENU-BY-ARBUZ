@@ -1,4 +1,4 @@
---// MM2 MENU BY ARBUZ v0.9
+--// MM2 MENU BY ARBUZ v1
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -16,6 +16,7 @@ local S = {
     noclip = false, infinityJump = false, flingOnTouch = false, flingThirdParty = false,
     flyEnabled = false, autoNotifyRoles = false, autoKillAll = false, autoGunTP = false,
     autoSendMurdererChat = false, antiVoidEnabled = false, antiFlingEnabled = false,
+    antiAfkEnabled = false, antiAfkConn = nil,
     flySpeed = 50, speedhackEnabled = false, speedhackSpeed = 45,
     guiLocked = false, minimized = false, menuVisible = true,
     espEnabled = { Innocent = false, Murderer = false, Sheriff = false, Hero = false },
@@ -107,7 +108,7 @@ U.title = Instance.new("TextLabel")
 U.title.Size = UDim2.new(1, -120, 1, 0)
 U.title.Position = UDim2.fromOffset(10, 0)
 U.title.BackgroundTransparency = 1
-U.title.Text = "MM2 MENU BY ARBUZ v0.9"
+U.title.Text = "MM2 MENU BY ARBUZ v1"
 U.title.TextColor3 = Color3.fromRGB(255, 255, 255)
 U.title.TextSize = 13
 U.title.Font = Enum.Font.GothamBold
@@ -841,7 +842,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ============================================================
--- ESP TAB (role + gun merged)
+-- ESP TAB
 -- ============================================================
 currentParent = U.tabFrames.ESP
 
@@ -1249,6 +1250,23 @@ U.afBtn.MouseButton1Click:Connect(function()
     if S.antiFlingEnabled then setOn(U.afBtn, U.afInd) else setOff(U.afBtn, U.afInd) end
 end)
 
+U.afkBtn, U.afkInd = createToggle("AntiAfk", "Anti AFK")
+U.afkBtn.MouseButton1Click:Connect(function()
+    S.antiAfkEnabled = not S.antiAfkEnabled
+    if S.antiAfkEnabled then
+        setOn(U.afkBtn, U.afkInd)
+        if S.antiAfkConn then S.antiAfkConn:Disconnect() S.antiAfkConn = nil end
+        S.antiAfkConn = player.Idled:Connect(function()
+            local VU = game:GetService("VirtualUser")
+            VU:CaptureController()
+            VU:ClickButton2(Vector2.new())
+        end)
+    else
+        setOff(U.afkBtn, U.afkInd)
+        if S.antiAfkConn then S.antiAfkConn:Disconnect() S.antiAfkConn = nil end
+    end
+end)
+
 U.rejoinBtn = createActionButton("Rejoin", "Rejoin Server")
 U.rejoinBtn.MouseButton1Click:Connect(function()
     sendNotification("MM2 Menu", "Rejoining server...")
@@ -1301,6 +1319,11 @@ local function resetAllToggles()
     if S.autoGunTP then S.autoGunTP = false setOff(U.autoGunBtn, U.autoGunInd) end
     if S.antiVoidEnabled then S.antiVoidEnabled = false setOff(U.avBtn, U.avInd) end
     if S.antiFlingEnabled then S.antiFlingEnabled = false setOff(U.afBtn, U.afInd) end
+    if S.antiAfkEnabled then
+        S.antiAfkEnabled = false
+        setOff(U.afkBtn, U.afkInd)
+        if S.antiAfkConn then S.antiAfkConn:Disconnect() S.antiAfkConn = nil end
+    end
     sendNotification("MM2 Menu", "All features turned off")
 end
 
