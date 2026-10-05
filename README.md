@@ -1,4 +1,4 @@
-# MM2-MENU-BY-ARBUZ-v1
+# MM2-MENU-BY-ARBUZ-v1.2
 
 MM2 Script Menu compatible with Delta Executor(tested) by ARBUZ181PL
 
@@ -8,7 +8,7 @@ Made: 17/09/2026
 
 Updated: 05/10/2026 
 
-Version: v1
+Version: v1.2
 
 LOADSTRING
 
