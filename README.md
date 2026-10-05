@@ -4,6 +4,7 @@ MM2 Script Menu compatible with Delta Executor(tested) by ARBUZ181PL
 
 (NO DETECTION REPORTS) 
 > !speedhack might get you kicked out!
+> not patched yet!
 
 Made: 17/09/2026 
 
