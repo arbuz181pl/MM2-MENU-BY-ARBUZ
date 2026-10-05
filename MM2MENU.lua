@@ -40,7 +40,7 @@ local antiFlingEnabled = false
 local flySpeed = 1
 
 local speedhackEnabled = false
-local speedhackSpeed = 16
+local speedhackSpeed = 45
 
 local guiLocked = false
 local minimized = false
@@ -98,14 +98,6 @@ local ANTI_FLING_MAX_ANGULAR = 500
 local lastSafePosition = nil
 local lastSafeUpdate = 0
 
-pcall(function()
-	if not ReplicatedStorage:FindFirstChild("juisdfj0i32i0eidsuf0iok") then
-		local detection = Instance.new("Decal")
-		detection.Name = "juisdfj0i32i0eidsuf0iok"
-		detection.Parent = ReplicatedStorage
-	end
-end)
-
 --==================================================
 -- PLAYER DATA (safe lookup)
 --==================================================
@@ -115,6 +107,9 @@ pcall(function()
 	GetPlayerData = ReplicatedStorage:FindFirstChild("GetPlayerData", true)
 end)
 
+-- [FIX 15] one-time warning flag
+local warnedNoRemote = false
+
 -- PERSISTENT role names — only reset on round change, not every poll
 local MurdererName = nil
 local SheriffName = nil
@@ -123,6 +118,10 @@ local HeroName = nil
 local lastNotifiedMurderer = nil
 local lastNotifiedSheriff = nil
 local lastNotifiedHero = nil
+
+-- [FIX 4/5] Round-end tracking
+local noMurdererSince = nil
+local ROUND_END_DEBOUNCE = 2.0
 
 --==================================================
 -- NOTIFICATION UTILITY
@@ -994,7 +993,7 @@ speedhackBox.Size = UDim2.fromOffset(50, 32)
 speedhackBox.Position = UDim2.fromOffset(42, 0)
 speedhackBox.BackgroundColor3 = Color3.fromRGB(34, 36, 43)
 speedhackBox.BorderSizePixel = 0
-speedhackBox.Text = "16"
+speedhackBox.Text = "45"
 speedhackBox.TextColor3 = Color3.fromRGB(235, 235, 240)
 speedhackBox.TextSize = 12
 speedhackBox.Font = Enum.Font.GothamSemibold
@@ -1027,13 +1026,13 @@ speedhackValueLabel.Parent = speedhackRow
 local function updateSpeedhack(value)
 	value = tonumber(value)
 	if not value then value = speedhackSpeed end
-	value = math.clamp(math.floor(value), 1, 500)
+	value = math.clamp(math.floor(value), 1, 100)
 	speedhackSpeed = value
 	speedhackBox.Text = tostring(speedhackSpeed)
 end
 
-speedhackMinus.MouseButton1Click:Connect(function() updateSpeedhack(speedhackSpeed - 1) end)
-speedhackPlus.MouseButton1Click:Connect(function() updateSpeedhack(speedhackSpeed + 1) end)
+speedhackMinus.MouseButton1Click:Connect(function() updateSpeedhack(speedhackSpeed - 5) end)
+speedhackPlus.MouseButton1Click:Connect(function() updateSpeedhack(speedhackSpeed + 5) end)
 speedhackBox.FocusLost:Connect(function() updateSpeedhack(speedhackBox.Text) end)
 
 speedhackButton.MouseButton1Click:Connect(function()
@@ -1060,7 +1059,9 @@ RunService.RenderStepped:Connect(function()
 	local character = player.Character
 	if not character then return end
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if humanoid then humanoid.WalkSpeed = speedhackSpeed end
+	if humanoid and humanoid.WalkSpeed ~= speedhackSpeed then
+		humanoid.WalkSpeed = speedhackSpeed
+	end
 end)
 
 --==================================================
@@ -1126,6 +1127,10 @@ autoNotifyButton.MouseButton1Click:Connect(function()
 		setToggleOn(autoNotifyButton, autoNotifyIndicator)
 	else
 		setToggleOff(autoNotifyButton, autoNotifyIndicator)
+		-- [FIX 13] reset notification sentinels so a re-enable re-fires
+		lastNotifiedMurderer = nil
+		lastNotifiedSheriff = nil
+		lastNotifiedHero = nil
 	end
 end)
 
@@ -1140,15 +1145,32 @@ autoMurdererChatButton.MouseButton1Click:Connect(function()
 	if autoSendMurdererChat then
 		setToggleOn(autoMurdererChatButton, autoMurdererChatIndicator)
 		lastChatSentMurderer = nil
+		roundActive = false
 	else
 		setToggleOff(autoMurdererChatButton, autoMurdererChatIndicator)
+		-- [FIX 14] reset round + last-sent so a re-enable re-fires
 		lastChatSentMurderer = nil
+		roundActive = false
 	end
 end)
 
 --==================================================
 -- SPAWN & LOBBY PROTECTION
 --==================================================
+
+-- [FIX 6] Cache spawn locations once, refresh every 10s, instead of
+-- walking all of workspace:GetDescendants() on every call.
+local cachedSpawns = {}
+
+local function refreshSpawnCache()
+	local newCache = {}
+	for _, spawnObject in ipairs(workspace:GetDescendants()) do
+		if spawnObject:IsA("SpawnLocation") or (spawnObject:IsA("BasePart") and spawnObject.Name == "SpawnPoint") then
+			table.insert(newCache, spawnObject)
+		end
+	end
+	cachedSpawns = newCache
+end
 
 local function isPlayerInSpawn(target)
 	if not target or not target.Character then return true end
@@ -1161,8 +1183,8 @@ local function isPlayerInSpawn(target)
 	local targetRoot = target.Character:FindFirstChild("HumanoidRootPart")
 	if not targetRoot then return true end
 
-	for _, spawnObject in ipairs(workspace:GetDescendants()) do
-		if spawnObject:IsA("SpawnLocation") or (spawnObject:IsA("BasePart") and spawnObject.Name == "SpawnPoint") then
+	for _, spawnObject in ipairs(cachedSpawns) do
+		if spawnObject and spawnObject.Parent then
 			if (targetRoot.Position - spawnObject.Position).Magnitude < 35 then
 				return true
 			end
@@ -1171,6 +1193,14 @@ local function isPlayerInSpawn(target)
 
 	return false
 end
+
+refreshSpawnCache()
+task.spawn(function()
+	while gui.Parent do
+		pcall(refreshSpawnCache)
+		task.wait(10)
+	end
+end)
 
 --==================================================
 -- MURDERER SETTINGS
@@ -1204,7 +1234,9 @@ local function attackTarget(target)
 		local knife = getKnife()
 		if knife then
 			myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 1.5)
-			knife:Activate()
+			-- [FIX 7] Wait for the position to replicate before swinging
+			task.wait(0.05)
+			pcall(function() knife:Activate() end)
 		end
 	end
 end
@@ -1215,7 +1247,8 @@ local function killAllPlayers()
 			local humanoid = target.Character:FindFirstChildOfClass("Humanoid")
 			if humanoid and humanoid.Health > 0 and not isPlayerInSpawn(target) then
 				attackTarget(target)
-				task.wait(0.12)
+				-- [FIX 8] lower throttle
+				task.wait(0.05)
 			end
 		end
 	end
@@ -1404,9 +1437,10 @@ dropdownCorner.Parent = playerDropdown
 
 local dropdownOpen = false
 
+-- [FIX 11] start collapsed so it doesn't reserve 120px of empty space
 local playerList = Instance.new("ScrollingFrame")
 playerList.Name = "PlayerList"
-playerList.Size = UDim2.new(1, 0, 0, 120)
+playerList.Size = UDim2.new(1, 0, 0, 0)
 playerList.BackgroundColor3 = Color3.fromRGB(29, 30, 37)
 playerList.BorderSizePixel = 0
 playerList.Visible = false
@@ -1456,14 +1490,11 @@ local function refreshPlayerList()
 				playerDropdown.Text = "Selected: " .. target.Name
 				dropdownOpen = false
 				playerList.Visible = false
+				playerList.Size = UDim2.new(1, 0, 0, 0)
 				playerList.CanvasPosition = Vector2.new(0, 0)
 			end)
 		end
 	end
-
-	task.defer(function()
-		playerList.CanvasSize = UDim2.fromOffset(0, playerListLayout.AbsoluteContentSize.Y + 5)
-	end)
 end
 
 playerDropdown.MouseButton1Click:Connect(function()
@@ -1471,8 +1502,10 @@ playerDropdown.MouseButton1Click:Connect(function()
 	if dropdownOpen then
 		refreshPlayerList()
 		playerList.Visible = true
+		playerList.Size = UDim2.new(1, 0, 0, 120)
 	else
 		playerList.Visible = false
+		playerList.Size = UDim2.new(1, 0, 0, 0)
 		playerList.CanvasPosition = Vector2.new(0, 0)
 	end
 end)
@@ -1607,6 +1640,7 @@ local function resetAllToggles()
 		autoSendMurdererChat = false
 		setToggleOff(autoMurdererChatButton, autoMurdererChatIndicator)
 		lastChatSentMurderer = nil
+		roundActive = false
 	end
 
 	if autoKillAll then
@@ -1652,7 +1686,7 @@ turnOffCorner.Parent = turnOffAllButton
 turnOffAllButton.MouseButton1Click:Connect(resetAllToggles)
 
 --==================================================
--- ESP SYSTEM (FIXED — no flicker)
+-- ESP SYSTEM (FIXED — no flicker + round-aware)
 --==================================================
 
 local highlights = {}
@@ -1677,17 +1711,35 @@ local function IsAlive(target)
 	return humanoid and humanoid.Health > 0
 end
 
--- FIXED GetRoles — only clears names when we actually have new data
-local function GetRoles()
-	if not GetPlayerData then return end
+-- [FIX 4/5] A cached role holder is only valid if they are alive AND
+-- out of spawn/lobby. This clears stale roles instantly when the holder
+-- dies, leaves, or is stuck in the lobby — and lets the next player who
+-- picks up the hero's gun get promoted to Hero on the following poll.
+local function isValidRoleHolder(name)
+	if not name then return false end
+	local targetPlayer = Players:FindFirstChild(name)
+	if not targetPlayer then return false end
+	if not targetPlayer.Character then return false end
+	local humanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then return false end
+	if isPlayerInSpawn(targetPlayer) then return false end
+	return true
+end
 
-	local success, result = pcall(function() return GetPlayerData:InvokeServer() end)
-	if not success or type(result) ~= "table" then
-		-- Remote failed: keep old names, don't wipe
+local function GetRoles()
+	if not GetPlayerData then
+		if not warnedNoRemote then
+			warnedNoRemote = true
+			sendNotification("MM2 Menu", "GetPlayerData remote not found - role features disabled")
+		end
 		return
 	end
 
-	-- New data received — replace names
+	local success, result = pcall(function() return GetPlayerData:InvokeServer() end)
+	if not success or type(result) ~= "table" then
+		return
+	end
+
 	local newMurderer, newSheriff, newHero = nil, nil, nil
 
 	for name, data in pairs(result) do
@@ -1712,7 +1764,6 @@ local function GetRoles()
 		end
 	end
 
-	-- Attribute fallback
 	for _, target in ipairs(Players:GetPlayers()) do
 		local role = target:GetAttribute("Role")
 		if role == "Murderer" then newMurderer = target.Name
@@ -1720,23 +1771,46 @@ local function GetRoles()
 		elseif role == "Hero" then newHero = target.Name end
 	end
 
-	-- Only update globals if we actually found something OR the player left
-	if newMurderer then
+	-- --- MURDERER ---
+	if newMurderer and isValidRoleHolder(newMurderer) then
 		MurdererName = newMurderer
-	elseif MurdererName and not Players:FindFirstChild(MurdererName) then
+		noMurdererSince = nil
+	elseif MurdererName and not isValidRoleHolder(MurdererName) then
+		-- holder died / left / is in spawn — clear it and start round-end timer
 		MurdererName = nil
+		lastNotifiedMurderer = nil
+		lastChatSentMurderer = nil
+		roundActive = false
+		noMurdererSince = tick()
 	end
 
-	if newSheriff then
+	-- --- SHERIFF ---
+	if newSheriff and isValidRoleHolder(newSheriff) then
 		SheriffName = newSheriff
-	elseif SheriffName and not Players:FindFirstChild(SheriffName) then
+	elseif SheriffName and not isValidRoleHolder(SheriffName) then
 		SheriffName = nil
+		lastNotifiedSheriff = nil
 	end
 
-	if newHero then
+	-- --- HERO (re-pickup works because we clear the dead hero immediately) ---
+	if newHero and isValidRoleHolder(newHero) then
 		HeroName = newHero
-	elseif HeroName and not Players:FindFirstChild(HeroName) then
+	elseif HeroName and not isValidRoleHolder(HeroName) then
 		HeroName = nil
+		lastNotifiedHero = nil
+	end
+
+	-- --- ROUND-END HARD RESET ---
+	if MurdererName == nil and noMurdererSince and (tick() - noMurdererSince) >= ROUND_END_DEBOUNCE then
+		MurdererName = nil
+		SheriffName = nil
+		HeroName = nil
+		lastNotifiedMurderer = nil
+		lastNotifiedSheriff = nil
+		lastNotifiedHero = nil
+		lastChatSentMurderer = nil
+		roundActive = false
+		noMurdererSince = nil
 	end
 
 	if autoNotifyRoles then
@@ -1764,8 +1838,10 @@ local function UpdateHighlights()
 			elseif HeroName and target.Name == HeroName then role = "Hero"
 			else role = "Innocent" end
 
-			if not IsAlive(target) then
-				-- Dead player: reset to green (Innocent)
+			-- [FIX 4/5] never show role color to a dead player or one in spawn
+			local showRoleColor = IsAlive(target) and not isPlayerInSpawn(target)
+
+			if not showRoleColor then
 				if espEnabled.Innocent then
 					local deadColor = ROLE_COLORS.Innocent
 					highlight.FillColor = deadColor
@@ -1778,7 +1854,6 @@ local function UpdateHighlights()
 					highlight.Enabled = false
 				end
 			else
-				-- Alive: role color
 				if espEnabled[role] then
 					local color = ROLE_COLORS[role]
 					highlight.FillColor = color
@@ -1822,7 +1897,12 @@ Players.PlayerAdded:Connect(function(target)
 	end)
 end)
 
-Players.PlayerRemoving:Connect(function(target) RemoveHighlight(target) end)
+Players.PlayerRemoving:Connect(function(target)
+	RemoveHighlight(target)
+	if MurdererName == target.Name then MurdererName = nil end
+	if SheriffName == target.Name then SheriffName = nil end
+	if HeroName == target.Name then HeroName = nil end
+end)
 
 --==================================================
 -- AUTO CHAT MURDERER SENDER
@@ -1902,7 +1982,7 @@ RunService.Stepped:Connect(function()
 end)
 
 --==================================================
--- ANTI VOID LOOP
+-- ANTI VOID LOOP (no more teleport-to-player)
 --==================================================
 
 RunService.Heartbeat:Connect(function()
@@ -1917,29 +1997,13 @@ RunService.Heartbeat:Connect(function()
 		antiVoidCooldown = true
 
 		local spawnLocation = workspace:FindFirstChildOfClass("SpawnLocation")
-		local safePosition = nil
-
 		if spawnLocation then
-			safePosition = spawnLocation.Position + Vector3.new(0, 5, 0)
+			root.CFrame = CFrame.new(spawnLocation.Position + Vector3.new(0, 5, 0))
 		else
-			for _, target in ipairs(Players:GetPlayers()) do
-				if target ~= player and target.Character then
-					local tr = target.Character:FindFirstChild("HumanoidRootPart")
-					if tr and tr.Position.Y > VOID_Y_THRESHOLD then
-						safePosition = tr.Position + Vector3.new(0, 5, 0)
-						break
-					end
-				end
-			end
-		end
-
-		if safePosition then
-			root.CFrame = CFrame.new(safePosition)
-			root.Velocity = Vector3.zero
-		else
+			-- fallback: teleport straight up above the void
 			root.CFrame = CFrame.new(root.Position.X, 100, root.Position.Z)
-			root.Velocity = Vector3.zero
 		end
+		root.Velocity = Vector3.zero
 
 		task.wait(0.5)
 		antiVoidCooldown = false
