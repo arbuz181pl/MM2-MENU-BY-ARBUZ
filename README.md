@@ -14,4 +14,4 @@ LOADSTRING
 
 ```loadstring(game:HttpGet("https://raw.githubusercontent.com/arbuz181pl/MM2-MENU-BY-ARBUZ/refs/heads/main/MM2MENU.lua"))()```
 
-# CURRENT VERSION NOT FULLY TESTED YET BUGS EXPECTED!!!
+# BUGS MAY OCCURE! REPORT ANY BUGS!
