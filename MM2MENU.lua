@@ -36,6 +36,7 @@ local CHANGELOG = {
         "Removed Server Hop (unreliable)",
         "Kill Murderer Now temporarily disabled",
         "Fly pauses Speedhack and restores it when turned off",
+        "Speedhack path is now straight (no curving on turns)",
     },
 }
 
@@ -1782,12 +1783,14 @@ startSpeedhack = function()
     S.speedhackEnabled = true
     setOn(U.shBtn, U.shInd)
     local bv = Instance.new("BodyVelocity")
-    bv.MaxForce = Vector3.new(10000, 0, 10000)
-    bv.P = 500
+    bv.MaxForce = Vector3.new(100000, 0, 100000)
+    bv.P = 1250
     bv.Velocity = Vector3.zero
     bv.Parent = r
     S.speedhackBV = bv
-    h.WalkSpeed = 16
+    -- Zero WalkSpeed so the Humanoid doesn't apply its own force in its facing direction.
+    -- Otherwise the two forces disagree during turns and the path curves.
+    h.WalkSpeed = 0
 end
 
 U.shBtn.MouseButton1Click:Connect(function()
@@ -4171,12 +4174,12 @@ player.CharacterAdded:Connect(function(character)
             local root = c:FindFirstChild("HumanoidRootPart")
             if not hum or not root then return end
             local bv = Instance.new("BodyVelocity")
-            bv.MaxForce = Vector3.new(10000, 0, 10000)
-            bv.P = 500
+            bv.MaxForce = Vector3.new(100000, 0, 100000)
+            bv.P = 1250
             bv.Velocity = Vector3.zero
             bv.Parent = root
             S.speedhackBV = bv
-            hum.WalkSpeed = 16
+            hum.WalkSpeed = 0
             pcall(setOn, U.shBtn, U.shInd)
         end)
     end
