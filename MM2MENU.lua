@@ -37,6 +37,8 @@ local CHANGELOG = {
         "Kill Murderer Now temporarily disabled",
         "Fly pauses Speedhack and restores it when turned off",
         "Speedhack path is now straight (no curving on turns)",
+        "Anti Fling pauses for fling toggles and restores afterwards",
+        "Anti Fling heartbeat reworked with safer thresholds",
     },
 }
 
@@ -75,7 +77,8 @@ local S = {
     noclip = false, infinityJump = false, flingOnTouch = false, flingThirdParty = false,
     flyEnabled = false, autoNotifyRoles = false, autoKillAll = false, autoGunTP = false,
     autoSendMurdererChat = false, autoSendSheriffChat = false, antiVoidEnabled = false,
-    antiFlingEnabled = false, antiAfkEnabled = false, antiAfkConn = nil,
+    antiFlingEnabled = false, antiFlingWasOnBeforeFling = false,
+    antiAfkEnabled = false, antiAfkConn = nil,
     playerDistanceOn = false, playerDistBillboards = {},
     killerAlarmOn = false, lastAlarmDist = math.huge, lastAlarmTime = 0,
     crosshairOn = false, crosshairGui = nil,
@@ -102,7 +105,7 @@ local S = {
     dropdownOpen = false, selectedPlayer = nil,
     resizing = false, dragging = false, reopenDragging = false, flyDragging = false,
     lastSafePosition = nil, lastSafeUpdate = 0, antiVoidCooldown = false,
-    VOID_Y_THRESHOLD = -50, ANTI_FLING_MAX_SPEED = 200, ANTI_FLING_MAX_ANGULAR = 500,
+    VOID_Y_THRESHOLD = -50, ANTI_FLING_MAX_SPEED = 250, ANTI_FLING_MAX_ANGULAR = 250,
     pendingNotify = false, pendingNotifySince = 0,
     capturingKeybind = false, capturingAction = nil,
     reopenDragDist = 0,
@@ -1489,8 +1492,8 @@ stopFly = function()
             task.defer(function()
                 task.wait(0.15)
                 if S.scriptClosed then return end
-                if S.flyEnabled then return end       -- fly somehow came back on
-                if S.speedhackEnabled then return end -- user already turned it on
+                if S.flyEnabled then return end
+                if S.speedhackEnabled then return end
                 startSpeedhack()
                 sendNotification("MM2 Menu", "Speedhack restored (was on before Fly)", SOUNDS.notify)
             end)
@@ -1505,8 +1508,6 @@ startFly = function()
     local r = c:FindFirstChild("HumanoidRootPart")
     if not h or not r then return end
 
-    -- Fly and Speedhack both attach a BodyVelocity to HumanoidRootPart -> conflict.
-    -- Remember Speedhack state and disable it, so we can restore it after Fly turns off.
     if S.speedhackEnabled then
         S.speedhackWasOnBeforeFly = true
         stopSpeedhack()
@@ -1596,7 +1597,6 @@ RunService.RenderStepped:Connect(function()
     if UserInputService:IsKeyDown(Enum.KeyCode.Space) or flyUpFlag == 1 then dir = dir + Vector3.new(0, 1, 0) end
     if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or flyDownFlag == -1 then dir = dir - Vector3.new(0, 1, 0) end
 
-    -- FLY SPEED BOOST: Double speed when Shift is held
     local speed = S.flySpeed
     if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift) then
         speed = speed * 2
@@ -1631,9 +1631,10 @@ U.f3Btn.MouseButton1Click:Connect(function()
         U.f3Btn.BackgroundColor3 = Color3.fromRGB(70, 45, 35)
         U.f3Ind.BackgroundColor3 = Color3.fromRGB(230, 100, 55)
         if S.antiFlingEnabled then
+            S.antiFlingWasOnBeforeFling = true
             S.antiFlingEnabled = false
             setOff(U.afBtn, U.afInd)
-            sendNotification("MM2 Menu", "Anti Fling disabled - it blocks Fling On Touch / 3rd party fling", SOUNDS.alert)
+            sendNotification("MM2 Menu", "Anti Fling paused - it conflicts with Fling 3rd party", SOUNDS.alert)
         end
         local ok = pcall(function()
             loadstring(game:HttpGet("https://rawscripts.net/raw/Universal-Script-Ultimate-Fling-GUI-41909"))()
@@ -1641,10 +1642,17 @@ U.f3Btn.MouseButton1Click:Connect(function()
         if not ok then sendNotification("MM2 Menu", "Failed to load 3rd party fling script.") end
     else
         setOff(U.f3Btn, U.f3Ind)
+        if S.antiFlingWasOnBeforeFling and not S.flingOnTouch then
+            S.antiFlingWasOnBeforeFling = false
+            if not S.antiFlingEnabled then
+                S.antiFlingEnabled = true
+                setOn(U.afBtn, U.afInd)
+                sendNotification("MM2 Menu", "Anti Fling restored (was on before Fling 3rd party)", SOUNDS.notify)
+            end
+        end
     end
 end)
 
--- ─── FLING ON TOUCH (from v1.2) ───
 local function flingLoop()
     local lp = player
     local c, hrp, vel, movel = nil, nil, nil, 0.1
@@ -1671,9 +1679,10 @@ U.fib.MouseButton1Click:Connect(function()
         U.fib.BackgroundColor3 = Color3.fromRGB(70, 45, 35)
         U.fii.BackgroundColor3 = Color3.fromRGB(230, 100, 55)
         if S.antiFlingEnabled then
+            S.antiFlingWasOnBeforeFling = true
             S.antiFlingEnabled = false
             setOff(U.afBtn, U.afInd)
-            sendNotification("MM2 Menu", "Anti Fling disabled - it blocks Fling On Touch / 3rd party fling", SOUNDS.alert)
+            sendNotification("MM2 Menu", "Anti Fling paused - it conflicts with Fling On Touch", SOUNDS.alert)
         end
         S.flingTouchActive = true
         S.flingTouchThread = coroutine.create(flingLoop)
@@ -1681,6 +1690,14 @@ U.fib.MouseButton1Click:Connect(function()
     else
         setOff(U.fib, U.fii)
         S.flingTouchActive = false
+        if S.antiFlingWasOnBeforeFling and not S.flingThirdParty then
+            S.antiFlingWasOnBeforeFling = false
+            if not S.antiFlingEnabled then
+                S.antiFlingEnabled = true
+                setOn(U.afBtn, U.afInd)
+                sendNotification("MM2 Menu", "Anti Fling restored (was on before Fling On Touch)", SOUNDS.notify)
+            end
+        end
     end
 end)
 
@@ -1768,8 +1785,6 @@ stopSpeedhack = function()
 end
 
 startSpeedhack = function()
-    -- Fly and Speedhack both attach a BodyVelocity to HumanoidRootPart -> conflict.
-    -- Block Speedhack while Fly is on; user must turn Fly off first.
     if S.flyEnabled then
         sendNotification("MM2 Menu", "Turn off Fly first - Speedhack conflicts with Fly", SOUNDS.alert)
         return
@@ -1788,8 +1803,6 @@ startSpeedhack = function()
     bv.Velocity = Vector3.zero
     bv.Parent = r
     S.speedhackBV = bv
-    -- Zero WalkSpeed so the Humanoid doesn't apply its own force in its facing direction.
-    -- Otherwise the two forces disagree during turns and the path curves.
     h.WalkSpeed = 0
 end
 
@@ -1797,7 +1810,6 @@ U.shBtn.MouseButton1Click:Connect(function()
     if S.speedhackEnabled then stopSpeedhack() else startSpeedhack() end
 end)
 
--- Applies speed whether on ground OR in air (no more freeze while jumping)
 RunService.Heartbeat:Connect(function()
     if not S.speedhackEnabled or not S.speedhackBV then return end
     local c = player.Character
@@ -2718,14 +2730,19 @@ end)
 
 U.afBtn, U.afInd = createToggle("AntiFling", "Anti Fling")
 U.afBtn.MouseButton1Click:Connect(function()
-    -- Anti Fling cannot be enabled while a fling toggle is active - they cancel each other out.
     if not S.antiFlingEnabled and (S.flingOnTouch or S.flingThirdParty) then
-        sendNotification("MM2 Menu", "Anti Fling + Fling toggles don't work together at the same time", SOUNDS.alert)
+        sendNotification("MM2 Menu", "Turn off Fling On Touch / Fling 3rd party first - Anti Fling conflicts with them", SOUNDS.alert)
         setOff(U.afBtn, U.afInd)
         return
     end
     S.antiFlingEnabled = not S.antiFlingEnabled
-    if S.antiFlingEnabled then setOn(U.afBtn, U.afInd) else setOff(U.afBtn, U.afInd) end
+    if S.antiFlingEnabled then
+        setOn(U.afBtn, U.afInd)
+        sendNotification("MM2 Menu", "Anti Fling: ON")
+    else
+        setOff(U.afBtn, U.afInd)
+        sendNotification("MM2 Menu", "Anti Fling: OFF")
+    end
 end)
 
 U.afkBtn, U.afkInd = createToggle("AntiAfk", "Anti AFK")
@@ -2823,8 +2840,8 @@ U.rejoinBtn.MouseButton1Click:Connect(function()
 end)
 
 resetAllToggles = function()
-    -- Prevent stopFly from auto-restoring Speedhack during a full reset.
     S.speedhackWasOnBeforeFly = false
+    S.antiFlingWasOnBeforeFling = false
     if S.noclip then
         S.noclip = false
         setOff(U.noclipBtn, U.noclipInd)
@@ -3419,7 +3436,6 @@ applyPvpPreset = function()
         end)
     end
     if not S.antiVoidEnabled then S.antiVoidEnabled = true setOn(U.avBtn, U.avInd) end
-    -- Don't enable Anti Fling if a fling toggle is on (they conflict).
     if not S.antiFlingEnabled and not S.flingOnTouch and not S.flingThirdParty then
         S.antiFlingEnabled = true
         setOn(U.afBtn, U.afInd)
@@ -3468,7 +3484,6 @@ applyPvpPreset = function()
         if S.crosshairGui then S.crosshairGui.Enabled = true end
         UserInputService.MouseIconEnabled = false
     end
-    -- Notifications like Round Start/End are deliberately NOT enabled here.
     sendNotification("MM2 Menu", "PVP Ready applied")
 end
 
@@ -3900,11 +3915,10 @@ local function updateGunESP()
     end
 end
 
--- ─── SELF RAINBOW ESP LOOP ───
+-- SELF RAINBOW ESP LOOP
 RunService.Heartbeat:Connect(function()
     if S.scriptClosed then return end
     if not S.selfRainbowESP then return end
-    -- Re-attach if missing (e.g. after respawn)
     if not S.selfRainbowHL or not S.selfRainbowHL.Parent then
         ensureSelfRainbowHL()
     end
@@ -3987,7 +4001,7 @@ RunService.Heartbeat:Connect(function()
     if dist < S.lastAlarmDist - ALARM_DIST_STEP and (now - (S.lastAlarmTime or 0)) >= ALARM_TIME_COOLDOWN then
         S.lastAlarmDist = dist
         S.lastAlarmTime = now
-        sendNotification("⚠ MURDERER NEAR", "Murderer is " .. math.floor(dist) .. " studs away!", SOUNDS.alert)
+        sendNotification("MURDERER NEAR", "Murderer is " .. math.floor(dist) .. " studs away!", SOUNDS.alert)
     end
 end)
 
@@ -4101,17 +4115,22 @@ RunService.Heartbeat:Connect(function()
     if not r then return end
     local now = tick()
     local v = r.AssemblyLinearVelocity
-    if v.Magnitude < 100 and r.Position.Y > -50 then
+
+    if v.Magnitude < 50 and r.Position.Y > 10 then
         S.lastSafePosition = r.CFrame
         S.lastSafeUpdate = now
     end
-    if v.Magnitude > S.ANTI_FLING_MAX_SPEED then
+
+    if v.Magnitude > 250 or v.Magnitude ~= v.Magnitude then
         r.AssemblyLinearVelocity = Vector3.zero
         r.AssemblyAngularVelocity = Vector3.zero
         r.RotVelocity = Vector3.zero
-        if S.lastSafePosition and (now - S.lastSafeUpdate) < 5 then r.CFrame = S.lastSafePosition end
+        if S.lastSafePosition and (now - S.lastSafeUpdate) < 5 then
+            r.CFrame = S.lastSafePosition
+        end
     end
-    if r.AssemblyAngularVelocity.Magnitude > S.ANTI_FLING_MAX_ANGULAR then
+
+    if r.AssemblyAngularVelocity.Magnitude > 250 then
         r.AssemblyAngularVelocity = Vector3.zero
         r.RotVelocity = Vector3.zero
     end
@@ -4128,17 +4147,13 @@ end
 
 if player.Character then hookPlayerDeath(player.Character) end
 player.CharacterAdded:Connect(function(character)
-    -- Snapshot the paused flag before stopFly() potentially clears it.
     local wasPausedBeforeFly = S.speedhackWasOnBeforeFly
     stopFly()
-    -- Respawn resets Fly anyway; if Speedhack was paused for Fly, keep it paused so
-    -- the restore happens naturally when the user re-toggles Fly off later.
     S.speedhackWasOnBeforeFly = wasPausedBeforeFly
     flyUpFlag = 0 flyDownFlag = 0
     S.originalCollision = {}
     S.lastSafePosition = nil
     S.antiVoidCooldown = false
-    -- FIX: keep Speedhack ON through round end / respawn.
     local keepSpeedhack = S.speedhackEnabled
     if S.speedhackBV then
         pcall(function() S.speedhackBV:Destroy() end)
@@ -4185,9 +4200,7 @@ player.CharacterAdded:Connect(function(character)
     end
 end)
 
--- ============================================================
 -- DRAG / RESIZE
--- ============================================================
 local dragStart, dragStartPosition, resizeStart, resizeStartSize, reopenDragStart, reopenDragStartPosition
 
 U.header.InputBegan:Connect(function(i)
@@ -4311,9 +4324,7 @@ ccYes.MouseButton1Click:Connect(function()
     closeScript()
 end)
 
--- ============================================================
 -- KEYBIND ACTIONS
--- ============================================================
 local kbActions = {}
 
 kbActions.fly = function()
@@ -4402,9 +4413,7 @@ kbActions.panic = function()
     if minimizeMenu then pcall(minimizeMenu) end
 end
 
--- ============================================================
 -- INPUT HANDLER
--- ============================================================
 local modifierKeys = {
     [Enum.KeyCode.LeftAlt] = true, [Enum.KeyCode.RightAlt] = true,
     [Enum.KeyCode.LeftControl] = true, [Enum.KeyCode.RightControl] = true,
