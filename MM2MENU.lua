@@ -35,7 +35,7 @@ local CHANGELOG = {
         "Added Self Rainbow ESP",
         "Removed Server Hop (unreliable)",
         "Kill Murderer Now temporarily disabled",
-        "Fly and Speedhack are now mutually exclusive",
+        "Fly pauses Speedhack and restores it when turned off",
     },
 }
 
@@ -90,7 +90,7 @@ local S = {
     cameraFollowMurderer = false, killSoundOn = false,
     lastKnownMurderer = nil,
     flySpeed = 50, speedhackEnabled = false, speedhackSpeed = SPEEDHACK_DEFAULT,
-    speedhackBV = nil,
+    speedhackBV = nil, speedhackWasOnBeforeFly = false,
     guiLocked = false, flyPanelLocked = false, minimized = false, menuVisible = true,
     espEnabled = { Innocent = false, Murderer = false, Sheriff = false, Hero = false },
     gunESPEnabled = false, gunHighlights = {}, originalCollision = {},
@@ -1480,6 +1480,21 @@ stopFly = function()
     FP.enable.Text = "Enable Fly"
     setOff(FP.enable, FP.enableInd)
     setOff(U.flyBtn, U.flyInd)
+
+    -- Restore Speedhack if it was on before Fly was enabled (and user hasn't already turned it on).
+    if S.speedhackWasOnBeforeFly then
+        S.speedhackWasOnBeforeFly = false
+        if not S.speedhackEnabled then
+            task.defer(function()
+                task.wait(0.15)
+                if S.scriptClosed then return end
+                if S.flyEnabled then return end       -- fly somehow came back on
+                if S.speedhackEnabled then return end -- user already turned it on
+                startSpeedhack()
+                sendNotification("MM2 Menu", "Speedhack restored (was on before Fly)", SOUNDS.notify)
+            end)
+        end
+    end
 end
 
 startFly = function()
@@ -1490,10 +1505,11 @@ startFly = function()
     if not h or not r then return end
 
     -- Fly and Speedhack both attach a BodyVelocity to HumanoidRootPart -> conflict.
-    -- Auto-disable Speedhack so the user doesn't fall through the map.
+    -- Remember Speedhack state and disable it, so we can restore it after Fly turns off.
     if S.speedhackEnabled then
+        S.speedhackWasOnBeforeFly = true
         stopSpeedhack()
-        sendNotification("MM2 Menu", "Speedhack disabled - conflicts with Fly", SOUNDS.alert)
+        sendNotification("MM2 Menu", "Speedhack paused - it conflicts with Fly", SOUNDS.alert)
     end
 
     if flyBV then flyBV:Destroy() end
@@ -1752,10 +1768,10 @@ end
 
 startSpeedhack = function()
     -- Fly and Speedhack both attach a BodyVelocity to HumanoidRootPart -> conflict.
-    -- Auto-disable Fly first.
+    -- Block Speedhack while Fly is on; user must turn Fly off first.
     if S.flyEnabled then
-        stopFly()
-        sendNotification("MM2 Menu", "Fly disabled - conflicts with Speedhack", SOUNDS.alert)
+        sendNotification("MM2 Menu", "Turn off Fly first - Speedhack conflicts with Fly", SOUNDS.alert)
+        return
     end
     stopSpeedhack()
     local c = player.Character
@@ -2804,6 +2820,8 @@ U.rejoinBtn.MouseButton1Click:Connect(function()
 end)
 
 resetAllToggles = function()
+    -- Prevent stopFly from auto-restoring Speedhack during a full reset.
+    S.speedhackWasOnBeforeFly = false
     if S.noclip then
         S.noclip = false
         setOff(U.noclipBtn, U.noclipInd)
@@ -4107,7 +4125,12 @@ end
 
 if player.Character then hookPlayerDeath(player.Character) end
 player.CharacterAdded:Connect(function(character)
+    -- Snapshot the paused flag before stopFly() potentially clears it.
+    local wasPausedBeforeFly = S.speedhackWasOnBeforeFly
     stopFly()
+    -- Respawn resets Fly anyway; if Speedhack was paused for Fly, keep it paused so
+    -- the restore happens naturally when the user re-toggles Fly off later.
+    S.speedhackWasOnBeforeFly = wasPausedBeforeFly
     flyUpFlag = 0 flyDownFlag = 0
     S.originalCollision = {}
     S.lastSafePosition = nil
