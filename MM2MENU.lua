@@ -35,6 +35,7 @@ local CHANGELOG = {
         "Added Self Rainbow ESP",
         "Removed Server Hop (unreliable)",
         "Kill Murderer Now temporarily disabled",
+        "Fly and Speedhack are now mutually exclusive",
     },
 }
 
@@ -176,6 +177,8 @@ local showCloseConfirm
 local updateHomeUI
 local stopSpeedhack
 local startSpeedhack
+local stopFly
+local startFly
 local ensureSelfRainbowHL
 local disableSelfRainbowESP
 
@@ -1464,7 +1467,7 @@ FP.minus.MouseButton1Click:Connect(function() updateFlySpeed(S.flySpeed - 1) end
 FP.plus.MouseButton1Click:Connect(function() updateFlySpeed(S.flySpeed + 1) end)
 FP.speedBox.FocusLost:Connect(function() updateFlySpeed(FP.speedBox.Text) end)
 
-local function stopFly()
+stopFly = function()
     S.flyEnabled = false
     if flyBV then flyBV:Destroy() flyBV = nil end
     if flyBG then flyBG:Destroy() flyBG = nil end
@@ -1479,12 +1482,20 @@ local function stopFly()
     setOff(U.flyBtn, U.flyInd)
 end
 
-local function startFly()
+startFly = function()
     local c = player.Character
     if not c then return end
     local h = c:FindFirstChildOfClass("Humanoid")
     local r = c:FindFirstChild("HumanoidRootPart")
     if not h or not r then return end
+
+    -- Fly and Speedhack both attach a BodyVelocity to HumanoidRootPart -> conflict.
+    -- Auto-disable Speedhack so the user doesn't fall through the map.
+    if S.speedhackEnabled then
+        stopSpeedhack()
+        sendNotification("MM2 Menu", "Speedhack disabled - conflicts with Fly", SOUNDS.alert)
+    end
+
     if flyBV then flyBV:Destroy() end
     if flyBG then flyBG:Destroy() end
     S.flyEnabled = true
@@ -1740,6 +1751,12 @@ stopSpeedhack = function()
 end
 
 startSpeedhack = function()
+    -- Fly and Speedhack both attach a BodyVelocity to HumanoidRootPart -> conflict.
+    -- Auto-disable Fly first.
+    if S.flyEnabled then
+        stopFly()
+        sendNotification("MM2 Menu", "Fly disabled - conflicts with Speedhack", SOUNDS.alert)
+    end
     stopSpeedhack()
     local c = player.Character
     if not c then return end
@@ -2162,11 +2179,11 @@ local function getGun()
     return g
 end
 
-U.killMurdererBtn = createActionButton("KillMurdererNow", "Kill Murderer Now (WIP - currently disabled)")
+U.killMurdererBtn = createActionButton("KillMurdererNow", "Kill Murderer Now (WIP - disabled)")
 U.killMurdererBtn.BackgroundColor3 = Color3.fromRGB(45, 40, 40)
 U.killMurdererBtn.TextColor3 = Color3.fromRGB(180, 175, 175)
 U.killMurdererBtn.MouseButton1Click:Connect(function()
-    sendNotification("MM2 Menu", "Kill Murderer Now is not working yet - fix coming soon", SOUNDS.alert)
+    sendNotification("MM2 Menu", "Kill Murderer Now does not work as expected - currently disabled", SOUNDS.alert)
 end)
 
 -- ============================================================
@@ -2682,9 +2699,9 @@ end)
 
 U.afBtn, U.afInd = createToggle("AntiFling", "Anti Fling")
 U.afBtn.MouseButton1Click:Connect(function()
-    -- Block turning Anti Fling ON while a fling toggle is active (they cancel each other out).
+    -- Anti Fling cannot be enabled while a fling toggle is active - they cancel each other out.
     if not S.antiFlingEnabled and (S.flingOnTouch or S.flingThirdParty) then
-        sendNotification("MM2 Menu", "Cannot enable Anti Fling while Fling On Touch / 3rd party fling is ON", SOUNDS.alert)
+        sendNotification("MM2 Menu", "Anti Fling + Fling toggles don't work together at the same time", SOUNDS.alert)
         setOff(U.afBtn, U.afInd)
         return
     end
@@ -3381,6 +3398,7 @@ applyPvpPreset = function()
         end)
     end
     if not S.antiVoidEnabled then S.antiVoidEnabled = true setOn(U.avBtn, U.avInd) end
+    -- Don't enable Anti Fling if a fling toggle is on (they conflict).
     if not S.antiFlingEnabled and not S.flingOnTouch and not S.flingThirdParty then
         S.antiFlingEnabled = true
         setOn(U.afBtn, U.afInd)
