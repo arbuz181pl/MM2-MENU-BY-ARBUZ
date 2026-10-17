@@ -29,23 +29,20 @@ Paste the loadstring, run it, and a draggable, resizable, rainbow-titled menu ap
 
 ## 📸 Screenshots
 
-<!-- Drop your screenshots in a docs/ folder and uncomment the lines below.
-     Tip: on GitHub, hovering a thumbnail shows a large preview. -->
+All shots are unedited gameplay — menu border colour matches the active tab (green / blue / red). Click any image for full size.
 
-<!--
 <table>
   <tr>
-    <td align="center"><img src="docs/home.png" width="260"><br><sub>Home / Live Status</sub></td>
-    <td align="center"><img src="docs/esp.png" width="260"><br><sub>Role ESP in game</sub></td>
-    <td align="center"><img src="docs/movement.png" width="260"><br><sub>Movement & Fly panel</sub></td>
+    <td align="center" width="33%"><a href="docs/home-status.jpg"><img src="docs/home-status.jpg" width="300" alt="Home tab showing Live Status"></a><br><sub><b>Home</b> · Live Status</sub></td>
+    <td align="center" width="33%"><a href="docs/home-quick-actions.jpg"><img src="docs/home-quick-actions.jpg" width="300" alt="Home tab showing Quick Actions and Session Stats"></a><br><sub><b>Home</b> · Quick Actions & Stats</sub></td>
+    <td align="center" width="33%"><a href="docs/movement.jpg"><img src="docs/movement.jpg" width="300" alt="Movement tab showing Noclip, Fly, Infinity Jump, Fling and Speedhack"></a><br><sub><b>Movement</b> · Speedhack 26</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/keybinds.png" width="260"><br><sub>Keybind rebinding</sub></td>
-    <td align="center"><img src="docs/config.png" width="260"><br><sub>Config slots</sub></td>
-    <td align="center"><img src="docs/notifier.png" width="260"><br><sub>Round alerts</sub></td>
+    <td align="center" width="33%"><a href="docs/murderer.jpg"><img src="docs/murderer.jpg" width="300" alt="Murderer tab showing Auto Kill All, Kill All Now, Kill Sheriff Now"></a><br><sub><b>Murderer</b> · Kill controls</sub></td>
+    <td align="center" width="33%"><a href="docs/teleport.jpg"><img src="docs/teleport.jpg" width="300" alt="Teleport tab showing player, role and world teleports"></a><br><sub><b>Teleport</b> · Role & world</sub></td>
+    <td align="center" width="33%"><a href="docs/utility.jpg"><img src="docs/utility.jpg" width="300" alt="Utility tab showing Anti Void, Anti Fling, Anti AFK, overlays and trails"></a><br><sub><b>Utility</b> · Overlays & Trails</sub></td>
   </tr>
 </table>
--->
 
 ---
 
@@ -271,6 +268,7 @@ loadstring(game:HttpGet(...))
 ```
 MM2-MENU-BY-ARBUZ/
 ├── MM2MENU.lua      # the entire menu — ~4,500 lines
+├── docs/            # screenshots used by this README
 └── README.md
 ```
 
