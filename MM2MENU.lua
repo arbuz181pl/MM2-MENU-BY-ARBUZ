@@ -1042,7 +1042,7 @@ end
 
 U.copyLsBtn = createActionButton("CopyLsBtn", "Copy Loadstring")
 U.copyLsBtn.MouseButton1Click:Connect(function()
-    local ls = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/arbuz181pl/TEST/refs/heads/main/TEST.lua"))()'
+    local ls = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/arbuz181pl/MM2-MENU-BY-ARBUZ/refs/heads/main/MM2MENU.lua"))()'
     local ok = pcall(function() setclipboard(ls) end)
     if ok then
         sendNotification("MM2 Menu", "Loadstring copied to clipboard")
